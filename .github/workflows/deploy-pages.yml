@@ -39,3 +39,6 @@ jobs:
       - name: Desplegar en GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+# Redeploy forzado: la primera vez el repo tenia Pages en modo "Deploy from
+# a branch" (Jekyll), asi que este push re-lanza la publicacion ya con
+# Source: GitHub Actions activo.
