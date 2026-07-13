@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
   <title>Rondas - Acceso</title>
-  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
   <div class="wrap" style="padding-top: 60px;">
@@ -24,12 +24,19 @@
         <button type="submit" class="big">Entrar</button>
       </form>
     </div>
+    <p class="muted" style="text-align:center;">
+      <a href="setup.html" style="color:inherit;">⚙️ Configurar conexión con el backend</a>
+    </p>
   </div>
-  <script src="/js/api.js"></script>
+  <script src="js/api.js"></script>
   <script>
+    if (!Api.getScriptUrl()) {
+      location.href = 'setup.html';
+    }
+
     const user = Api.getUser();
     if (user && Api.getToken()) {
-      location.href = user.role === 'supervisor' ? '/supervisor.html' : '/guard.html';
+      location.href = user.role === 'supervisor' ? 'supervisor.html' : 'guard.html';
     }
 
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
@@ -39,9 +46,9 @@
       const errEl = document.getElementById('loginError');
       errEl.classList.add('hidden');
       try {
-        const data = await Api.post('/api/auth/login', { username, password });
+        const data = await Api.call('login', { username, password });
         Api.setSession(data.token, data.user);
-        location.href = data.user.role === 'supervisor' ? '/supervisor.html' : '/guard.html';
+        location.href = data.user.role === 'supervisor' ? 'supervisor.html' : 'guard.html';
       } catch (err) {
         errEl.textContent = err.message;
         errEl.classList.remove('hidden');

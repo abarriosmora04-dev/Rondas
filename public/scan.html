@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
   <title>Registrar punto de control</title>
-  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
   <div class="wrap" style="padding-top: 60px; text-align: center;">
@@ -30,31 +30,39 @@
     </div>
   </div>
 
-  <script src="/js/api.js"></script>
+  <script src="js/api.js"></script>
   <script>
-    const code = location.pathname.split('/scan/')[1];
+    const code = new URLSearchParams(location.search).get('code');
     const resultEl = document.getElementById('result');
     const loginBox = document.getElementById('loginBox');
 
+    if (!Api.getScriptUrl()) {
+      location.href = 'setup.html';
+    }
+
     async function tryRegister() {
+      if (!code) {
+        resultEl.innerHTML = '<h2>⚠️ Código no válido</h2><p class="error">Falta el parámetro ?code= en la URL.</p>';
+        return;
+      }
       if (!Api.getToken()) {
         resultEl.classList.add('hidden');
         loginBox.classList.remove('hidden');
         return;
       }
       try {
-        const data = await Api.post('/api/scans', { code });
+        const data = await Api.call('scans.create', { code });
         resultEl.innerHTML = `
           <h2>✅ Registrado</h2>
           <p><strong>${data.checkpoint.name}</strong></p>
           <p class="muted">${new Date(data.timestamp).toLocaleString('es-ES')}</p>
-          <button class="big" onclick="location.href='/guard.html'">Ir al panel</button>
+          <button class="big" onclick="location.href='guard.html'">Ir al panel</button>
         `;
       } catch (err) {
         resultEl.innerHTML = `
           <h2>⚠️ No se pudo registrar</h2>
           <p class="error">${err.message}</p>
-          <button class="big" onclick="location.href='/guard.html'">Ir al panel</button>
+          <button class="big" onclick="location.href='guard.html'">Ir al panel</button>
         `;
       }
     }
@@ -66,7 +74,7 @@
       const errEl = document.getElementById('loginError');
       errEl.classList.add('hidden');
       try {
-        const data = await Api.post('/api/auth/login', { username, password });
+        const data = await Api.call('login', { username, password });
         Api.setSession(data.token, data.user);
         loginBox.classList.add('hidden');
         resultEl.classList.remove('hidden');

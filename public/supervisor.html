@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
   <title>Rondas - Panel del supervisor</title>
-  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
   <div class="topbar">
@@ -92,16 +92,24 @@
       </table>
     </div>
 
+    <div class="card">
+      <h3>Conexión</h3>
+      <p class="muted">URL de Apps Script en uso:</p>
+      <p style="word-break: break-all;"><code id="scriptUrlShown"></code></p>
+      <a href="setup.html">Cambiar URL de Apps Script</a>
+    </div>
+
   </div>
 
-  <script src="/js/api.js"></script>
+  <script src="js/api.js"></script>
   <script>
     const user = requireRole('supervisor');
     if (user) document.getElementById('userName').textContent = user.name;
+    document.getElementById('scriptUrlShown').textContent = Api.getScriptUrl();
 
     function logout() {
       Api.clearSession();
-      location.href = '/index.html';
+      location.href = 'index.html';
     }
 
     const statusLabels = {
@@ -118,8 +126,8 @@
 
     async function refreshLive() {
       const [round, shift] = await Promise.all([
-        Api.get('/api/scans/current-round'),
-        Api.get('/api/shifts/current'),
+        Api.call('scans.currentRound'),
+        Api.call('shifts.current'),
       ]);
 
       document.getElementById('shiftStatus').textContent = shift
@@ -141,7 +149,7 @@
     }
 
     async function refreshAlerts() {
-      const alerts = await Api.get('/api/alerts');
+      const alerts = await Api.call('alerts.list');
       const body = document.getElementById('alertsBody');
       body.innerHTML = alerts
         .slice(0, 30)
@@ -157,12 +165,12 @@
     }
 
     async function ackAlert(id) {
-      await Api.post(`/api/alerts/${id}/ack`);
+      await Api.call('alerts.ack', { id });
       refreshAlerts();
     }
 
     async function refreshRoundsHistory() {
-      const rows = await Api.get('/api/rounds/history');
+      const rows = await Api.call('rounds.history');
       const body = document.getElementById('roundsBody');
       body.innerHTML = rows
         .slice(0, 30)
@@ -174,15 +182,20 @@
         .join('');
     }
 
+    function qrImageUrl(code) {
+      const scanUrl = new URL('scan.html?code=' + encodeURIComponent(code), location.href).href;
+      return 'https://api.qrserver.com/v1/create-qr-code/?size=400x400&margin=10&data=' + encodeURIComponent(scanUrl);
+    }
+
     async function refreshCheckpoints() {
-      const cps = await Api.get('/api/checkpoints');
+      const cps = await Api.call('checkpoints.list');
       const body = document.getElementById('checkpointsBody');
       body.innerHTML = cps
         .map(
           (c) => `<tr>
             <td>${c.name}</td>
             <td>${c.active ? '✔️' : '❌'}</td>
-            <td><a href="#" onclick="return openQr(event, '${c.id}')">Ver QR</a></td>
+            <td><a href="${qrImageUrl(c.code)}" target="_blank" rel="noopener">Ver QR</a></td>
             <td class="row">
               <button class="secondary" onclick="toggleCheckpoint('${c.id}', ${!c.active})">${c.active ? 'Desactivar' : 'Activar'}</button>
               <button class="danger" onclick="deleteCheckpoint('${c.id}')">Eliminar</button>
@@ -192,25 +205,14 @@
         .join('');
     }
 
-    async function openQr(e, id) {
-      e.preventDefault();
-      const res = await fetch(`/api/checkpoints/${id}/qr.png`, {
-        headers: { Authorization: `Bearer ${Api.getToken()}` },
-      });
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      window.open(url, '_blank');
-      return false;
-    }
-
     async function toggleCheckpoint(id, active) {
-      await Api.patch(`/api/checkpoints/${id}`, { active });
+      await Api.call('checkpoints.update', { id, active });
       refreshCheckpoints();
     }
 
     async function deleteCheckpoint(id) {
       if (!confirm('¿Eliminar este punto de control?')) return;
-      await Api.del(`/api/checkpoints/${id}`);
+      await Api.call('checkpoints.delete', { id });
       refreshCheckpoints();
     }
 
@@ -218,20 +220,20 @@
       e.preventDefault();
       const name = document.getElementById('cpName').value.trim();
       if (!name) return;
-      await Api.post('/api/checkpoints', { name });
+      await Api.call('checkpoints.create', { name });
       document.getElementById('cpName').value = '';
       refreshCheckpoints();
     });
 
     async function refreshSettings() {
-      const s = await Api.get('/api/rounds/settings');
+      const s = await Api.call('rounds.settingsGet');
       document.getElementById('roundsPerHour').value = s.roundsPerHour;
       document.getElementById('heartbeatMinutes').value = s.heartbeatMinutes;
     }
 
     document.getElementById('settingsForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      await Api.patch('/api/rounds/settings', {
+      await Api.call('rounds.settingsUpdate', {
         roundsPerHour: Number(document.getElementById('roundsPerHour').value),
         heartbeatMinutes: Number(document.getElementById('heartbeatMinutes').value),
       });
@@ -241,7 +243,7 @@
     });
 
     async function refreshUsers() {
-      const users = await Api.get('/api/users');
+      const users = await Api.call('users.list');
       const body = document.getElementById('usersBody');
       body.innerHTML = users
         .map(
@@ -257,14 +259,14 @@
 
     async function deleteUser(id) {
       if (!confirm('¿Eliminar este usuario?')) return;
-      await Api.del(`/api/users/${id}`);
+      await Api.call('users.delete', { id });
       refreshUsers();
     }
 
     document.getElementById('userForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       try {
-        await Api.post('/api/users', {
+        await Api.call('users.create', {
           name: document.getElementById('uName').value.trim(),
           username: document.getElementById('uUsername').value.trim(),
           password: document.getElementById('uPassword').value,
@@ -278,18 +280,24 @@
     });
 
     async function refreshAll() {
-      await Promise.all([
-        refreshLive(),
-        refreshAlerts(),
-        refreshRoundsHistory(),
-        refreshCheckpoints(),
-        refreshSettings(),
-        refreshUsers(),
-      ]);
+      try {
+        await Promise.all([
+          refreshLive(),
+          refreshAlerts(),
+          refreshRoundsHistory(),
+          refreshCheckpoints(),
+          refreshSettings(),
+          refreshUsers(),
+        ]);
+      } catch (e) {
+        console.error(e);
+      }
     }
 
-    refreshAll();
-    setInterval(() => Promise.all([refreshLive(), refreshAlerts(), refreshRoundsHistory()]), 15000);
+    if (user) {
+      refreshAll();
+      setInterval(() => Promise.all([refreshLive(), refreshAlerts(), refreshRoundsHistory()]).catch(console.error), 15000);
+    }
   </script>
 </body>
 </html>

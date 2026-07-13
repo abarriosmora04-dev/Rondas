@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
   <title>Rondas - Panel del vigilante</title>
-  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
   <div class="topbar">
@@ -52,21 +52,19 @@
     </div>
   </div>
 
-  <script src="/js/api.js"></script>
+  <script src="js/api.js"></script>
   <script>
     const user = requireRole('guard');
 
     function logout() {
       Api.clearSession();
-      location.href = '/index.html';
+      location.href = 'index.html';
     }
 
     if (user) document.getElementById('userName').textContent = user.name;
 
-    let currentShift = null;
-
     async function refreshShift() {
-      currentShift = await Api.get('/api/shifts/current');
+      const currentShift = await Api.call('shifts.current');
       const statusEl = document.getElementById('shiftStatus');
       const startBtn = document.getElementById('startShiftBtn');
       const endBtn = document.getElementById('endShiftBtn');
@@ -83,7 +81,7 @@
 
     async function startShift() {
       try {
-        await Api.post('/api/shifts/start');
+        await Api.call('shifts.start');
         await refreshShift();
       } catch (e) {
         alert(e.message);
@@ -93,7 +91,7 @@
     async function endShift() {
       if (!confirm('¿Seguro que quieres terminar el turno?')) return;
       try {
-        await Api.post('/api/shifts/end');
+        await Api.call('shifts.end');
         await refreshShift();
       } catch (e) {
         alert(e.message);
@@ -103,7 +101,7 @@
     async function panic() {
       if (!confirm('Se va a avisar al supervisor de una EMERGENCIA. ¿Confirmar?')) return;
       try {
-        await Api.post('/api/shifts/panic');
+        await Api.call('shifts.panic');
         alert('Aviso enviado.');
       } catch (e) {
         alert(e.message);
@@ -118,7 +116,7 @@
     };
 
     async function refreshRound() {
-      const data = await Api.get('/api/scans/current-round');
+      const data = await Api.call('scans.currentRound');
       const badge = document.getElementById('roundBadge');
       badge.textContent = statusLabels[data.status] || data.status;
       badge.className = `badge ${data.status}`;
@@ -140,7 +138,7 @@
     }
 
     async function refreshHistory() {
-      const rows = await Api.get('/api/scans/mine');
+      const rows = await Api.call('scans.mine');
       const body = document.getElementById('historyBody');
       body.innerHTML = rows
         .map(
@@ -151,11 +149,17 @@
     }
 
     async function refreshAll() {
-      await Promise.all([refreshShift(), refreshRound(), refreshHistory()]);
+      try {
+        await Promise.all([refreshShift(), refreshRound(), refreshHistory()]);
+      } catch (e) {
+        console.error(e);
+      }
     }
 
-    refreshAll();
-    setInterval(refreshAll, 15000);
+    if (user) {
+      refreshAll();
+      setInterval(refreshAll, 15000);
+    }
   </script>
 </body>
 </html>

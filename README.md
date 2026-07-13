@@ -3,6 +3,17 @@
 Aplicación web para verificar que el vigilante de un puesto (garita + aparcamiento) realiza
 sus rondas periódicas y sigue activo, con alertas automáticas por email cuando algo falla.
 
+**Arquitectura sin hosting propio:**
+- El **backend es una Google Sheet** gestionada por un script de Google Apps Script
+  (gratis, sin tarjeta, usa tu cuenta de Google).
+- El **frontend es estático** (HTML/CSS/JS) y se sirve con **GitHub Pages** directamente
+  desde este repositorio.
+- Las **alertas se envían por email** con `MailApp` de Apps Script: no hace falta
+  configurar ningún SMTP, usa tu propia cuenta de Google.
+
+No necesitas crear ninguna cuenta nueva (ni Render, ni Railway, ni tarjetas de crédito):
+solo tu Google y tu GitHub, que ya tienes.
+
 ## Cómo funciona
 
 - El supervisor define **puntos de control** (checkpoints) físicos repartidos por el
@@ -17,67 +28,108 @@ sus rondas periódicas y sigue activo, con alertas automáticas por email cuando
   escaneo (por defecto 12), se envía una alerta de "posible ausencia o vigilante dormido",
   incluso antes de que termine el bloque de la ronda.
 - Hay un **botón de pánico/SOS** en el panel del vigilante para emergencias reales.
-- Todas las alertas (ronda incompleta, sin actividad, pánico) se registran en el panel del
-  supervisor y se envían **por email** (el medio de notificación más barato: coste 0 con
-  cualquier SMTP, incluido Gmail).
+- Todas las alertas (ronda incompleta, sin actividad, pánico) quedan registradas en la
+  hoja de Google y se envían **por email**.
 
-## Instalación
+## Puesta en marcha (dos partes: backend y frontend)
 
-```bash
-npm install
-cp .env.example .env
-```
+### 1. Backend: Google Sheet + Apps Script
 
-Edita `.env`:
+1. Ve a [sheets.google.com](https://sheets.google.com) y crea una hoja de cálculo nueva.
+   Ponle un nombre, por ejemplo "Rondas - datos".
+2. Menú **Extensiones → Apps Script**. Se abre el editor de código.
+3. Vas a tener 4 ficheros para copiar desde la carpeta [`apps-script/`](apps-script) de
+   este repositorio. En el editor de Apps Script, por cada uno:
+   - Créalo con **Archivo → Nuevo → Script**, y ponle el mismo nombre (sin el `.gs`):
+     `Code`, `Auth`, `Scheduler`, `Setup`.
+   - Borra el contenido de ejemplo y pega el contenido del fichero correspondiente del
+     repo.
+   - Hay un archivo `Code.gs` que ya trae Apps Script por defecto: reutilízalo para pegar
+     el contenido de `apps-script/Code.gs`.
+4. Guarda (icono de disquete o Ctrl/Cmd+S).
+5. En la barra de funciones de arriba, selecciona **`initSheets`** y pulsa **▶ Ejecutar**.
+   La primera vez te pedirá autorizar permisos (tu cuenta, acepta el aviso de "app no
+   verificada" — es tu propio script). Esto crea las pestañas necesarias y dos usuarios de
+   partida:
+   - `supervisor` / `cambia-esta-clave`
+   - `vigilante` / `cambia-esta-clave`
 
-- `PUBLIC_URL`: la URL pública donde vayas a desplegar la app (se usa para generar los QR).
-- `SEED_SUPERVISOR_USER` / `SEED_SUPERVISOR_PASS`: credenciales de la cuenta de supervisor
-  que se crea automáticamente la primera vez que arranca (cámbialas).
-- `SEED_GUARD_USER` / `SEED_GUARD_PASS`: credenciales de la primera cuenta de vigilante.
-- `SMTP_*` y `ALERT_EMAIL_TO`: datos de tu cuenta de correo para enviar las alertas.
-  - Con Gmail: activa la verificación en dos pasos y crea una "contraseña de aplicación"
-    (myaccount.google.com/apppasswords). Es gratis y no tiene límite práctico para este uso.
-  - También funciona con cualquier otro proveedor SMTP gratuito (Brevo, Zoho, etc.).
-  - `ALERT_EMAIL_TO` es la dirección donde tú quieres recibir los avisos.
+   **Cámbialas en cuanto entres** (panel de supervisor → Usuarios → crea las tuyas y
+   elimina las de partida, o simplemente cambia la contraseña editando el hash... más
+   fácil: crea usuarios nuevos con tus propias claves y borra los de ejemplo).
+6. Selecciona **`setupTrigger`** y pulsa ▶ Ejecutar una vez. Esto crea el disparador que
+   revisa las rondas cada minuto.
+7. **Implementar → Nueva implementación**:
+   - Tipo: **Aplicación web**.
+   - Ejecutar como: **Yo (tu cuenta)**.
+   - Quién tiene acceso: **Cualquier usuario**.
+   - Pulsa Implementar y autoriza de nuevo si te lo pide.
+   - Copia la **URL de la aplicación web** que te da (algo como
+     `https://script.google.com/macros/s/XXXXXXXX/exec`). La necesitarás en el frontend.
 
-Arranca el servidor:
+**Importante para actualizaciones futuras:** si cambias el código y quieres volver a
+desplegarlo, usa **Implementar → Gestionar implementaciones → editar (lápiz) → Nueva
+versión**, NO crees una implementación completamente nueva — si lo haces, la URL cambia y
+tendrías que volver a pegarla en el frontend.
 
-```bash
-npm start
-```
+Las alertas por email llegan, por defecto, a la cuenta de Google dueña del script. Si
+quieres cambiar el destinatario, abre la pestaña **Settings** de la Google Sheet y edita a
+mano la fila `alertEmailTo`.
 
-Por defecto escucha en `http://localhost:3000`.
+### 2. Frontend: GitHub Pages
 
-## Desplegarlo para uso real
+1. En este repositorio: **Settings → Pages → Build and deployment → Source: "GitHub
+   Actions"**. Es un paso manual único (GitHub no deja activarlo por API la primera vez).
+2. En cuanto esté activado, el workflow [`deploy-pages.yml`](.github/workflows/deploy-pages.yml)
+   publica automáticamente la carpeta `public/` cada vez que se hace push a la rama
+   `claude/guard-activity-verification-tz5qvk`. Puedes lanzarlo también a mano desde la
+   pestaña **Actions** del repo (botón "Run workflow").
+3. Cuando termine, tu app estará en una URL del tipo:
+   `https://<tu-usuario>.github.io/<nombre-del-repo>/`
+4. Ábrela. La primera vez te pedirá la **URL de Apps Script** que copiaste en el paso
+   anterior — pégala y pulsa "Probar conexión" para confirmar que responde, luego
+   "Guardar".
+5. Entra con `supervisor` / `cambia-esta-clave` (o las credenciales que hayas creado).
 
-Para que el vigilante pueda escanear QR con la cámara del móvil necesitas la app accesible
-por **HTTPS** desde internet (o al menos desde la red del aparcamiento). Opciones sencillas
-y gratuitas/baratas: Render, Railway, Fly.io, un VPS pequeño, o incluso un Raspberry Pi con
-un túnel (Cloudflare Tunnel, ngrok) si prefieres tenerlo todo en el propio local.
+## Primeros pasos ya dentro de la app
 
-Los datos se guardan en `data/db.json`. Si despliegas en una plataforma con almacenamiento
-efímero, asegúrate de montar un volumen persistente en la carpeta `data/`, o los datos
-(usuarios, histórico, checkpoints) se perderán al reiniciar.
-
-## Primeros pasos tras desplegar
-
-1. Entra como supervisor (`SEED_SUPERVISOR_USER`) en `/supervisor.html`.
-2. Crea los puntos de control (p.ej. "Entrada", "Zona A", "Zona B", "Garita") — cuantos más
-   puntos alejados entre sí, más difícil es hacer las rondas sin moverse realmente.
-3. Descarga el QR de cada uno (botón "Ver QR"), imprímelo y pégalo físicamente en su sitio.
-4. Ajusta en "Configuración de rondas" cuántas rondas por hora quieres exigir y a partir de
-   cuántos minutos sin actividad quieres el aviso de "posible ausencia/sueño".
-5. Da de alta al vigilante (o usa la cuenta semilla) y comparte con él la URL de
-   `/index.html` para que inicie sesión en su móvil.
-6. El vigilante inicia turno, y a partir de ahí escanea los puntos con la cámara del móvil
+1. Como supervisor: crea los puntos de control (p.ej. "Entrada", "Zona A", "Zona B",
+   "Garita") — cuantos más puntos alejados entre sí, más difícil es hacer las rondas sin
+   moverse realmente.
+2. Pulsa "Ver QR" en cada uno, imprímelo y pégalo físicamente en su sitio.
+3. Ajusta en "Configuración de rondas" cuántas rondas por hora quieres exigir y a partir
+   de cuántos minutos sin actividad quieres el aviso de "posible ausencia/sueño".
+4. Da de alta al vigilante (o usa la cuenta semilla) y comparte con él la URL de GitHub
+   Pages para que inicie sesión en su móvil (puede "Añadir a pantalla de inicio" para que
+   se abra como una app).
+5. El vigilante inicia turno, y a partir de ahí escanea los puntos con la cámara del móvil
    en cada ronda.
+
+## Dónde viven los datos
+
+Todo se guarda en la Google Sheet que creaste: pestañas `Users`, `Checkpoints`, `Scans`,
+`Shifts`, `Alerts`, `RoundsHistory`, `Sessions` y `Settings`. Puedes abrirla directamente
+para revisar el histórico, exportarlo a otra herramienta, o hacer una copia de seguridad
+con **Archivo → Hacer una copia**.
 
 ## Notas de seguridad del enfoque
 
-- Ningún sistema de rondas es 100% infalible (un QR se puede fotografiar y "escanear" desde
-  la garita). Para reforzarlo: coloca los puntos en ubicaciones muy separadas entre sí,
-  cambia el QR/código periódicamente, y revisa el histórico de horas de escaneo (rondas
-  hechas siempre en segundos sospechosamente iguales son una señal de alerta).
-- El aviso de inactividad (heartbeat) es la protección principal contra quedarse dormido en
-  la garita, porque no depende de que complete la ronda entera: salta en cuanto pasa
+- Ningún sistema de rondas es 100% infalible (un QR se puede fotografiar y "escanear"
+  desde la garita). Para reforzarlo: coloca los puntos en ubicaciones muy separadas entre
+  sí, y revisa el histórico de horas de escaneo (rondas hechas siempre en segundos
+  sospechosamente iguales son una señal de alerta).
+- El aviso de inactividad (heartbeat) es la protección principal contra quedarse dormido
+  en la garita, porque no depende de que complete la ronda entera: salta en cuanto pasa
   demasiado tiempo sin ningún registro.
+- La autenticación es una implementación sencilla (hash SHA-256 + sal, tokens de sesión en
+  la propia hoja) pensada para un puesto único de bajo riesgo, no para un sistema
+  multiusuario expuesto públicamente a gran escala.
+
+## Límites de Google Apps Script a tener en cuenta
+
+- Cuenta de Gmail gratuita: unos 90 minutos de ejecución de script al día y unos 100
+  emails/día — de sobra para el ritmo de comprobación de esta app (cada minuto). Si tienes
+  Google Workspace, los límites son más altos.
+- El primer request tras un rato inactivo puede tardar unos segundos en responder ("cold
+  start" de Apps Script) — es normal, la app muestra un aviso de "Registrando..." mientras
+  espera.

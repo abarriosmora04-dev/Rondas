@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Rondas - Configuración</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="wrap" style="padding-top: 60px;">
+    <h1>🔦 Rondas</h1>
+    <p class="muted">Configuración de conexión</p>
+    <div class="card">
+      <p>
+        Pega aquí la URL de tu aplicación web de Google Apps Script (la que obtienes al
+        hacer "Implementar → Nueva implementación → Aplicación web").
+      </p>
+      <form id="setupForm">
+        <div style="margin-bottom: 12px;">
+          <label>URL de Apps Script</label>
+          <input
+            type="url"
+            id="scriptUrl"
+            placeholder="https://script.google.com/macros/s/XXXXX/exec"
+            required
+          />
+        </div>
+        <p class="error hidden" id="setupError"></p>
+        <p class="success hidden" id="setupSuccess"></p>
+        <div class="row">
+          <button type="submit">Guardar</button>
+          <button type="button" class="secondary" onclick="testConnection()">Probar conexión</button>
+        </div>
+      </form>
+    </div>
+    <p class="muted">
+      ¿Primera vez? Sigue los pasos del README del repositorio para crear la hoja de
+      Google y desplegar el backend antes de pegar la URL aquí.
+    </p>
+  </div>
+  <script src="js/api.js"></script>
+  <script>
+    document.getElementById('scriptUrl').value = Api.getScriptUrl();
+
+    document.getElementById('setupForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const url = document.getElementById('scriptUrl').value.trim();
+      if (!url) return;
+      Api.setScriptUrl(url);
+      const successEl = document.getElementById('setupSuccess');
+      successEl.textContent = 'Guardado. Redirigiendo...';
+      successEl.classList.remove('hidden');
+      setTimeout(() => (location.href = 'index.html'), 700);
+    });
+
+    async function testConnection() {
+      const url = document.getElementById('scriptUrl').value.trim();
+      const errEl = document.getElementById('setupError');
+      const okEl = document.getElementById('setupSuccess');
+      errEl.classList.add('hidden');
+      okEl.classList.add('hidden');
+      if (!url) return;
+      const previous = Api.getScriptUrl();
+      Api.setScriptUrl(url);
+      try {
+        await Api.call('ping');
+        okEl.textContent = '✅ Conexión correcta.';
+        okEl.classList.remove('hidden');
+      } catch (err) {
+        if (previous) Api.setScriptUrl(previous);
+        else Api.setScriptUrl('');
+        errEl.textContent = '❌ ' + err.message;
+        errEl.classList.remove('hidden');
+      }
+    }
+  </script>
+</body>
+</html>
