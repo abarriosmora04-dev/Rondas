@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Rondas - Panel del supervisor</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <div class="topbar">
+    <strong>🔦 Rondas · Supervisor</strong>
+    <div class="row">
+      <span class="muted" id="userName"></span>
+      <button class="secondary" onclick="logout()">Salir</button>
+    </div>
+  </div>
+
+  <div class="wrap wide">
+
+    <div class="card">
+      <div class="row between">
+        <h3>Estado en vivo</h3>
+        <span class="badge" id="roundBadge">-</span>
+      </div>
+      <p class="muted" id="shiftStatus">Comprobando...</p>
+      <p class="muted" id="roundWindow"></p>
+      <ul class="checklist" id="checklist"></ul>
+    </div>
+
+    <div class="card">
+      <h3>Alertas recientes</h3>
+      <table>
+        <thead><tr><th>Hora</th><th>Tipo</th><th>Mensaje</th><th></th></tr></thead>
+        <tbody id="alertsBody"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>Historial de rondas</h3>
+      <table>
+        <thead><tr><th>Ventana</th><th>Estado</th></tr></thead>
+        <tbody id="roundsBody"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>Puntos de control</h3>
+      <form id="cpForm" class="row" style="margin-bottom:12px;">
+        <input type="text" id="cpName" placeholder="Nombre del punto (ej. Entrada Norte)" required />
+        <button type="submit">Añadir</button>
+      </form>
+      <table>
+        <thead><tr><th>Nombre</th><th>Activo</th><th>QR</th><th></th></tr></thead>
+        <tbody id="checkpointsBody"></tbody>
+      </table>
+      <p class="muted">Imprime el QR de cada punto y colócalo físicamente en esa ubicación del aparcamiento/garita.</p>
+    </div>
+
+    <div class="card">
+      <h3>Configuración de rondas</h3>
+      <form id="settingsForm">
+        <div class="row">
+          <div style="flex:1;">
+            <label>Rondas por hora</label>
+            <input type="number" id="roundsPerHour" min="1" max="12" required />
+          </div>
+          <div style="flex:1;">
+            <label>Aviso si no hay actividad (minutos)</label>
+            <input type="number" id="heartbeatMinutes" min="1" required />
+          </div>
+        </div>
+        <button type="submit" style="margin-top:12px;">Guardar</button>
+        <span class="success hidden" id="settingsSaved">Guardado</span>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3>Usuarios</h3>
+      <form id="userForm" class="row" style="margin-bottom:12px;">
+        <input type="text" id="uName" placeholder="Nombre" required style="flex:1;" />
+        <input type="text" id="uUsername" placeholder="Usuario" required style="flex:1;" />
+        <input type="password" id="uPassword" placeholder="Contraseña" required style="flex:1;" />
+        <select id="uRole" style="flex:1;">
+          <option value="guard">Vigilante</option>
+          <option value="supervisor">Supervisor</option>
+        </select>
+        <button type="submit">Crear</button>
+      </form>
+      <table>
+        <thead><tr><th>Nombre</th><th>Usuario</th><th>Rol</th><th></th></tr></thead>
+        <tbody id="usersBody"></tbody>
+      </table>
+    </div>
+
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    const user = requireRole('supervisor');
+    if (user) document.getElementById('userName').textContent = user.name;
+
+    function logout() {
+      Api.clearSession();
+      location.href = '/index.html';
+    }
+
+    const statusLabels = {
+      completa: 'Completa',
+      incompleta: 'Incompleta',
+      no_iniciada: 'No iniciada',
+      sin_configurar: 'Sin puntos configurados',
+    };
+    const alertLabels = {
+      ronda_incompleta: 'Ronda incompleta',
+      sin_actividad: 'Sin actividad',
+      panico: 'EMERGENCIA',
+    };
+
+    async function refreshLive() {
+      const [round, shift] = await Promise.all([
+        Api.get('/api/scans/current-round'),
+        Api.get('/api/shifts/current'),
+      ]);
+
+      document.getElementById('shiftStatus').textContent = shift
+        ? `Turno abierto: ${shift.guardName}, desde las ${new Date(shift.startedAt).toLocaleTimeString('es-ES')}`
+        : 'No hay ningún turno abierto ahora mismo.';
+
+      const badge = document.getElementById('roundBadge');
+      badge.textContent = statusLabels[round.status] || round.status;
+      badge.className = `badge ${round.status}`;
+
+      const start = new Date(round.slotStart).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+      const end = new Date(round.slotEnd).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+      document.getElementById('roundWindow').textContent = `Ventana de ${start} a ${end}`;
+
+      const list = document.getElementById('checklist');
+      list.innerHTML = round.checkpoints
+        .map((c) => `<li><span class="dot ${c.scanned ? 'done' : 'pending'}"></span> ${c.name}</li>`)
+        .join('') || '<li class="muted">Sin puntos de control configurados.</li>';
+    }
+
+    async function refreshAlerts() {
+      const alerts = await Api.get('/api/alerts');
+      const body = document.getElementById('alertsBody');
+      body.innerHTML = alerts
+        .slice(0, 30)
+        .map(
+          (a) => `<tr>
+            <td>${new Date(a.createdAt).toLocaleString('es-ES')}</td>
+            <td><span class="badge ${a.type}">${alertLabels[a.type] || a.type}</span></td>
+            <td>${a.message}</td>
+            <td>${a.acknowledged ? '✔️' : `<button class="secondary" onclick="ackAlert('${a.id}')">Marcar visto</button>`}</td>
+          </tr>`
+        )
+        .join('');
+    }
+
+    async function ackAlert(id) {
+      await Api.post(`/api/alerts/${id}/ack`);
+      refreshAlerts();
+    }
+
+    async function refreshRoundsHistory() {
+      const rows = await Api.get('/api/rounds/history');
+      const body = document.getElementById('roundsBody');
+      body.innerHTML = rows
+        .slice(0, 30)
+        .map((r) => {
+          const start = new Date(r.slotStart).toLocaleString('es-ES');
+          const end = new Date(r.slotEnd).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+          return `<tr><td>${start} - ${end}</td><td><span class="badge ${r.status}">${statusLabels[r.status] || r.status}</span></td></tr>`;
+        })
+        .join('');
+    }
+
+    async function refreshCheckpoints() {
+      const cps = await Api.get('/api/checkpoints');
+      const body = document.getElementById('checkpointsBody');
+      body.innerHTML = cps
+        .map(
+          (c) => `<tr>
+            <td>${c.name}</td>
+            <td>${c.active ? '✔️' : '❌'}</td>
+            <td><a href="#" onclick="return openQr(event, '${c.id}')">Ver QR</a></td>
+            <td class="row">
+              <button class="secondary" onclick="toggleCheckpoint('${c.id}', ${!c.active})">${c.active ? 'Desactivar' : 'Activar'}</button>
+              <button class="danger" onclick="deleteCheckpoint('${c.id}')">Eliminar</button>
+            </td>
+          </tr>`
+        )
+        .join('');
+    }
+
+    async function openQr(e, id) {
+      e.preventDefault();
+      const res = await fetch(`/api/checkpoints/${id}/qr.png`, {
+        headers: { Authorization: `Bearer ${Api.getToken()}` },
+      });
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      return false;
+    }
+
+    async function toggleCheckpoint(id, active) {
+      await Api.patch(`/api/checkpoints/${id}`, { active });
+      refreshCheckpoints();
+    }
+
+    async function deleteCheckpoint(id) {
+      if (!confirm('¿Eliminar este punto de control?')) return;
+      await Api.del(`/api/checkpoints/${id}`);
+      refreshCheckpoints();
+    }
+
+    document.getElementById('cpForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('cpName').value.trim();
+      if (!name) return;
+      await Api.post('/api/checkpoints', { name });
+      document.getElementById('cpName').value = '';
+      refreshCheckpoints();
+    });
+
+    async function refreshSettings() {
+      const s = await Api.get('/api/rounds/settings');
+      document.getElementById('roundsPerHour').value = s.roundsPerHour;
+      document.getElementById('heartbeatMinutes').value = s.heartbeatMinutes;
+    }
+
+    document.getElementById('settingsForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      await Api.patch('/api/rounds/settings', {
+        roundsPerHour: Number(document.getElementById('roundsPerHour').value),
+        heartbeatMinutes: Number(document.getElementById('heartbeatMinutes').value),
+      });
+      const saved = document.getElementById('settingsSaved');
+      saved.classList.remove('hidden');
+      setTimeout(() => saved.classList.add('hidden'), 2000);
+    });
+
+    async function refreshUsers() {
+      const users = await Api.get('/api/users');
+      const body = document.getElementById('usersBody');
+      body.innerHTML = users
+        .map(
+          (u) => `<tr>
+            <td>${u.name}</td>
+            <td>${u.username}</td>
+            <td>${u.role === 'supervisor' ? 'Supervisor' : 'Vigilante'}</td>
+            <td>${u.id === user.id ? '' : `<button class="danger" onclick="deleteUser('${u.id}')">Eliminar</button>`}</td>
+          </tr>`
+        )
+        .join('');
+    }
+
+    async function deleteUser(id) {
+      if (!confirm('¿Eliminar este usuario?')) return;
+      await Api.del(`/api/users/${id}`);
+      refreshUsers();
+    }
+
+    document.getElementById('userForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        await Api.post('/api/users', {
+          name: document.getElementById('uName').value.trim(),
+          username: document.getElementById('uUsername').value.trim(),
+          password: document.getElementById('uPassword').value,
+          role: document.getElementById('uRole').value,
+        });
+        e.target.reset();
+        refreshUsers();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+
+    async function refreshAll() {
+      await Promise.all([
+        refreshLive(),
+        refreshAlerts(),
+        refreshRoundsHistory(),
+        refreshCheckpoints(),
+        refreshSettings(),
+        refreshUsers(),
+      ]);
+    }
+
+    refreshAll();
+    setInterval(() => Promise.all([refreshLive(), refreshAlerts(), refreshRoundsHistory()]), 15000);
+  </script>
+</body>
+</html>

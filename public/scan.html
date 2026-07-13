@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Registrar punto de control</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <div class="wrap" style="padding-top: 60px; text-align: center;">
+    <div class="card" id="result">
+      <h2>Registrando...</h2>
+      <p class="muted">Espera un momento.</p>
+    </div>
+
+    <div class="card hidden" id="loginBox">
+      <h2>Inicia sesión para registrar</h2>
+      <form id="loginForm">
+        <div style="margin-bottom: 12px; text-align: left;">
+          <label>Usuario</label>
+          <input type="text" id="username" required />
+        </div>
+        <div style="margin-bottom: 12px; text-align: left;">
+          <label>Contraseña</label>
+          <input type="password" id="password" required />
+        </div>
+        <p class="error hidden" id="loginError"></p>
+        <button type="submit" class="big">Entrar y registrar</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    const code = location.pathname.split('/scan/')[1];
+    const resultEl = document.getElementById('result');
+    const loginBox = document.getElementById('loginBox');
+
+    async function tryRegister() {
+      if (!Api.getToken()) {
+        resultEl.classList.add('hidden');
+        loginBox.classList.remove('hidden');
+        return;
+      }
+      try {
+        const data = await Api.post('/api/scans', { code });
+        resultEl.innerHTML = `
+          <h2>✅ Registrado</h2>
+          <p><strong>${data.checkpoint.name}</strong></p>
+          <p class="muted">${new Date(data.timestamp).toLocaleString('es-ES')}</p>
+          <button class="big" onclick="location.href='/guard.html'">Ir al panel</button>
+        `;
+      } catch (err) {
+        resultEl.innerHTML = `
+          <h2>⚠️ No se pudo registrar</h2>
+          <p class="error">${err.message}</p>
+          <button class="big" onclick="location.href='/guard.html'">Ir al panel</button>
+        `;
+      }
+    }
+
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+      const errEl = document.getElementById('loginError');
+      errEl.classList.add('hidden');
+      try {
+        const data = await Api.post('/api/auth/login', { username, password });
+        Api.setSession(data.token, data.user);
+        loginBox.classList.add('hidden');
+        resultEl.classList.remove('hidden');
+        resultEl.innerHTML = '<h2>Registrando...</h2>';
+        await tryRegister();
+      } catch (err) {
+        errEl.textContent = err.message;
+        errEl.classList.remove('hidden');
+      }
+    });
+
+    tryRegister();
+  </script>
+</body>
+</html>
