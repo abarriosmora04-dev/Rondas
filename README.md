@@ -31,65 +31,73 @@ solo tu Google y tu GitHub, que ya tienes.
 - Todas las alertas (ronda incompleta, sin actividad, pánico) quedan registradas en la
   hoja de Google y se envían **por email**.
 
-## Puesta en marcha (dos partes: backend y frontend)
+## Puesta en marcha (todo desde el navegador — Safari en iPad funciona bien)
 
-### 1. Backend: Google Sheet + Apps Script
+El frontend ya está publicado por GitHub Actions en cuanto actives Pages (paso 2). Todo lo
+de abajo se puede hacer desde Safari en el iPad, sin ordenador. Si el editor de Apps
+Script se ve muy apretado, usa el menú "aA" de Safari → **"Solicitar sitio web de
+escritorio"** para tener la barra de herramientas completa.
 
-1. Ve a [sheets.google.com](https://sheets.google.com) y crea una hoja de cálculo nueva.
-   Ponle un nombre, por ejemplo "Rondas - datos".
-2. Menú **Extensiones → Apps Script**. Se abre el editor de código.
-3. Vas a tener 4 ficheros para copiar desde la carpeta [`apps-script/`](apps-script) de
-   este repositorio. En el editor de Apps Script, por cada uno:
-   - Créalo con **Archivo → Nuevo → Script**, y ponle el mismo nombre (sin el `.gs`):
-     `Code`, `Auth`, `Scheduler`, `Setup`.
-   - Borra el contenido de ejemplo y pega el contenido del fichero correspondiente del
-     repo.
-   - Hay un archivo `Code.gs` que ya trae Apps Script por defecto: reutilízalo para pegar
-     el contenido de `apps-script/Code.gs`.
-4. Guarda (icono de disquete o Ctrl/Cmd+S).
-5. En la barra de funciones de arriba, selecciona **`initSheets`** y pulsa **▶ Ejecutar**.
-   La primera vez te pedirá autorizar permisos (tu cuenta, acepta el aviso de "app no
-   verificada" — es tu propio script). Esto crea las pestañas necesarias y dos usuarios de
-   partida:
+### 1. Backend: Google Sheet + Apps Script (un solo fichero para copiar)
+
+1. Ve a [sheets.google.com](https://sheets.google.com) y crea una hoja de cálculo nueva
+   ("+" → Hoja de cálculo en blanco). Ponle un nombre, por ejemplo "Rondas - datos".
+2. Menú **Extensiones → Apps Script**. Se abre el editor de código, con un fichero
+   `Code.gs` ya creado (vacío por defecto).
+3. En este repositorio de GitHub, abre [`apps-script/Code.gs`](apps-script/Code.gs) y pulsa
+   el botón **"Copy raw file"** (icono de portapapeles, arriba a la derecha del código) —
+   copia todo el contenido de una vez, no hay que seleccionar nada a mano.
+4. Vuelve a la pestaña de Apps Script, borra todo lo que haya en `Code.gs` (selecciona
+   todo y pega encima) y pega el contenido copiado. Es el único fichero que hace falta:
+   no crees ninguno más.
+5. Guarda (icono de disquete arriba).
+6. Arriba, junto al botón ▶ Ejecutar, hay un desplegable de funciones: elige
+   **`initSheets`** y pulsa **▶ Ejecutar**. La primera vez te pedirá autorizar permisos
+   (tu cuenta → "Avanzado" → "Ir a [nombre del proyecto] (no seguro)" — es tu propio
+   script, es normal que Google avise así la primera vez). Esto crea las pestañas
+   necesarias y dos usuarios de partida:
    - `supervisor` / `cambia-esta-clave`
    - `vigilante` / `cambia-esta-clave`
 
-   **Cámbialas en cuanto entres** (panel de supervisor → Usuarios → crea las tuyas y
-   elimina las de partida, o simplemente cambia la contraseña editando el hash... más
-   fácil: crea usuarios nuevos con tus propias claves y borra los de ejemplo).
-6. Selecciona **`setupTrigger`** y pulsa ▶ Ejecutar una vez. Esto crea el disparador que
-   revisa las rondas cada minuto.
-7. **Implementar → Nueva implementación**:
-   - Tipo: **Aplicación web**.
+   **Cámbialas en cuanto entres** (panel de supervisor → Usuarios → crea las tuyas con tu
+   contraseña y borra las de ejemplo).
+7. En el mismo desplegable, elige **`setupTrigger`** y pulsa ▶ Ejecutar una vez. Esto crea
+   el disparador que revisa las rondas cada minuto.
+8. Botón **Implementar** (arriba a la derecha) → **Nueva implementación**:
+   - Tipo: pulsa el engranaje y elige **Aplicación web**.
    - Ejecutar como: **Yo (tu cuenta)**.
    - Quién tiene acceso: **Cualquier usuario**.
-   - Pulsa Implementar y autoriza de nuevo si te lo pide.
+   - Pulsa **Implementar** y autoriza de nuevo si te lo pide.
    - Copia la **URL de la aplicación web** que te da (algo como
-     `https://script.google.com/macros/s/XXXXXXXX/exec`). La necesitarás en el frontend.
+     `https://script.google.com/macros/s/XXXXXXXX/exec`). La necesitarás en el siguiente
+     paso.
 
-**Importante para actualizaciones futuras:** si cambias el código y quieres volver a
-desplegarlo, usa **Implementar → Gestionar implementaciones → editar (lápiz) → Nueva
-versión**, NO crees una implementación completamente nueva — si lo haces, la URL cambia y
-tendrías que volver a pegarla en el frontend.
+**Importante para el futuro:** si algún día cambias el código y quieres volver a
+desplegarlo, usa **Implementar → Gestionar implementaciones → editar (icono de lápiz) →
+Nueva versión**, NO crees una implementación completamente nueva — si lo haces, la URL
+cambia y tendrías que volver a pegarla en la app.
 
 Las alertas por email llegan, por defecto, a la cuenta de Google dueña del script. Si
 quieres cambiar el destinatario, abre la pestaña **Settings** de la Google Sheet y edita a
 mano la fila `alertEmailTo`.
 
-### 2. Frontend: GitHub Pages
+### 2. Frontend: GitHub Pages (un interruptor, una sola vez)
 
-1. En este repositorio: **Settings → Pages → Build and deployment → Source: "GitHub
-   Actions"**. Es un paso manual único (GitHub no deja activarlo por API la primera vez).
+1. En este repositorio, en Safari: **Settings → Pages → Build and deployment → Source:
+   "GitHub Actions"**. Es el único paso manual — GitHub no deja activarlo automáticamente
+   la primera vez.
 2. En cuanto esté activado, el workflow [`deploy-pages.yml`](.github/workflows/deploy-pages.yml)
    publica automáticamente la carpeta `public/` cada vez que se hace push a la rama
-   `claude/guard-activity-verification-tz5qvk`. Puedes lanzarlo también a mano desde la
-   pestaña **Actions** del repo (botón "Run workflow").
-3. Cuando termine, tu app estará en una URL del tipo:
+   `claude/guard-activity-verification-tz5qvk`. Si quieres forzar que se publique ya,
+   entra en la pestaña **Actions** del repo y pulsa "Run workflow".
+3. Cuando termine (un par de minutos), tu app estará en una URL del tipo:
    `https://<tu-usuario>.github.io/<nombre-del-repo>/`
 4. Ábrela. La primera vez te pedirá la **URL de Apps Script** que copiaste en el paso
    anterior — pégala y pulsa "Probar conexión" para confirmar que responde, luego
    "Guardar".
-5. Entra con `supervisor` / `cambia-esta-clave` (o las credenciales que hayas creado).
+5. Entra con `supervisor` / `cambia-esta-clave` (o las credenciales que hayas creado). En
+   el iPad, desde Safari puedes usar "Compartir → Añadir a pantalla de inicio" para que se
+   abra como una app aparte, sin barra de navegador.
 
 ## Primeros pasos ya dentro de la app
 

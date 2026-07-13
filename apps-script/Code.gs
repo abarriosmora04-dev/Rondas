@@ -1,15 +1,21 @@
 /**
- * Rondas - backend en Google Apps Script.
+ * Rondas - backend en Google Apps Script (fichero unico).
  *
- * Este fichero contiene: el esquema de las hojas, las funciones genericas de
- * lectura/escritura sobre la Google Sheet, el enrutador doGet/doPost, y los
- * manejadores de cada accion (checkpoints, scans, shifts, alerts, users,
- * ajustes de rondas). La logica de turnos/heartbeat y el envio de emails
- * vive en Scheduler.gs; el login y las sesiones en Auth.gs; la creacion
- * inicial de las hojas en Setup.gs. Todos los ficheros comparten el mismo
- * ambito global (asi funciona un proyecto de Apps Script), por lo que no
- * hace falta ningun require/import entre ellos.
+ * Todo el backend vive en este unico fichero para que dar de alta el
+ * proyecto sea lo mas simple posible: solo hay que pegar este contenido
+ * sobre el "Code.gs" que Apps Script crea por defecto, sin tener que crear
+ * ficheros adicionales.
+ *
+ * Contiene: el esquema de las hojas, las funciones genericas de
+ * lectura/escritura sobre la Google Sheet, login y sesiones, el calculo de
+ * rondas/heartbeat y el envio de alertas por email, la puesta en marcha
+ * inicial (initSheets/setupTrigger), y el enrutador doGet/doPost con todos
+ * los manejadores de cada accion.
  */
+
+// =============================================================================
+// Esquema de las hojas
+// =============================================================================
 
 var SHEETS_SCHEMA = {
   Users: ['id', 'name', 'username', 'passwordHash', 'salt', 'role', 'createdAt'],
@@ -22,10 +28,10 @@ var SHEETS_SCHEMA = {
   Settings: ['key', 'value'],
 };
 
-// ---------------------------------------------------------------------------
-// Acceso genérico a las hojas (cada fila se lee/escribe como un objeto plano
+// =============================================================================
+// Acceso generico a las hojas (cada fila se lee/escribe como un objeto plano
 // usando la cabecera de la hoja como nombres de campo).
-// ---------------------------------------------------------------------------
+// =============================================================================
 
 function getSheet_(name) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -150,9 +156,381 @@ function uniq_(arr) {
   return out;
 }
 
-// ---------------------------------------------------------------------------
-// Enrutador HTTP
-// ---------------------------------------------------------------------------
+// =============================================================================
+// Login, hash de contrasenas y sesiones (hoja "Sessions"). No usamos JWT: un
+// token aleatorio se guarda en la hoja junto al usuario y a una fecha de
+// caducidad; viaja en el body/query de cada llamada, nunca en una cabecera,
+// para evitar peticiones "preflight" de CORS que Apps Script no gestiona bien.
+// =============================================================================
+
+function hashPassword_(password, salt) {
+  var bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, salt + ':' + password);
+  return bytes
+    .map(function (b) {
+      var v = (b + 256) % 256;
+      return ('0' + v.toString(16)).slice(-2);
+    })
+    .join('');
+}
+
+function publicUser_(user) {
+  return { id: user.id, name: user.name, username: user.username, role: user.role };
+}
+
+function handleLogin_(params) {
+  var username = params.username;
+  var password = params.password;
+  if (!username || !password) throw new Error('Usuario y contrasena son obligatorios');
+  var user = readAll_('Users').filter(function (u) {
+    return u.username === username;
+  })[0];
+  if (!user) throw new Error('Credenciales incorrectas');
+  if (hashPassword_(password, user.salt) !== user.passwordHash) {
+    throw new Error('Credenciales incorrectas');
+  }
+  var token = createSession_(user.id);
+  return { token: token, user: publicUser_(user) };
+}
+
+function handleMe_(params, user) {
+  return { user: publicUser_(user) };
+}
+
+function createSession_(userId) {
+  var token = Utilities.getUuid() + Utilities.getUuid();
+  var now = Date.now();
+  var expiresAt = now + 30 * 24 * 60 * 60 * 1000; // 30 dias
+  appendRow_('Sessions', { token: token, userId: userId, createdAt: now, expiresAt: expiresAt });
+  return token;
+}
+
+function getUserByToken_(token) {
+  if (!token) throw new Error('No autenticado');
+  var session = readAll_('Sessions').filter(function (s) {
+    return s.token === token;
+  })[0];
+  if (!session) throw new Error('Token invalido o caducado');
+  if (Number(session.expiresAt) < Date.now()) throw new Error('Token invalido o caducado');
+  var user = readAll_('Users').filter(function (u) {
+    return u.id === session.userId;
+  })[0];
+  if (!user) throw new Error('Usuario no encontrado');
+  return user;
+}
+
+function pruneExpiredSessions_() {
+  var sh = getSheet_('Sessions');
+  var headers = headerRow_(sh);
+  var lastRow = sh.getLastRow();
+  if (lastRow < 2) return;
+  var expCol = headers.indexOf('expiresAt');
+  var values = sh.getRange(2, 1, lastRow - 1, headers.length).getValues();
+  var now = Date.now();
+  for (var i = values.length - 1; i >= 0; i--) {
+    if (Number(values[i][expCol]) < now) sh.deleteRow(i + 2);
+  }
+}
+
+// =============================================================================
+// Calculo de rondas (bloques de tiempo alineados al reloj), deteccion de
+// rondas incompletas y de inactividad prolongada (heartbeat), y envio de
+// alertas por email. checkRoundsAndHeartbeat() es la funcion que dispara el
+// trigger de "cada 1 minuto" creado por setupTrigger().
+// =============================================================================
+
+function getIntervalMinutes_() {
+  var perHour = Number(getSetting_('roundsPerHour', 3));
+  return 60 / perHour;
+}
+
+function getSlot_(now, intervalMin) {
+  var hourStart = new Date(now);
+  hourStart.setMinutes(0, 0, 0);
+  var minutesSinceHour = (now.getTime() - hourStart.getTime()) / 60000;
+  var slotIndex = Math.floor(minutesSinceHour / intervalMin);
+  var slotStart = hourStart.getTime() + slotIndex * intervalMin * 60000;
+  var slotEnd = slotStart + intervalMin * 60000;
+  return { slotStart: slotStart, slotEnd: slotEnd };
+}
+
+function getRoundStatus_(slotStart, slotEnd) {
+  var checkpoints = readAll_('Checkpoints').filter(function (c) {
+    return c.active;
+  });
+  if (checkpoints.length === 0) {
+    return { status: 'sin_configurar', scannedIds: [], missing: [], checkpoints: checkpoints };
+  }
+  var scans = readAll_('Scans').filter(function (s) {
+    return s.timestamp >= slotStart && s.timestamp < slotEnd;
+  });
+  var scannedIds = uniq_(
+    scans.map(function (s) {
+      return s.checkpointId;
+    })
+  );
+  var missing = checkpoints.filter(function (c) {
+    return scannedIds.indexOf(c.id) === -1;
+  });
+  var status;
+  if (missing.length === 0) status = 'completa';
+  else if (scannedIds.length === 0) status = 'no_iniciada';
+  else status = 'incompleta';
+  return { status: status, scannedIds: scannedIds, missing: missing, checkpoints: checkpoints };
+}
+
+function getCurrentShift_() {
+  var shifts = readAll_('Shifts');
+  for (var i = 0; i < shifts.length; i++) {
+    if (!shifts[i].endedAt) return shifts[i];
+  }
+  return null;
+}
+
+function addAlert_(type, message, meta) {
+  appendRow_('Alerts', {
+    id: Utilities.getUuid(),
+    type: type,
+    message: message,
+    meta: meta ? JSON.stringify(meta) : '',
+    createdAt: Date.now(),
+    acknowledged: false,
+  });
+}
+
+function sendAlertEmail_(subject, text) {
+  var to = getSetting_('alertEmailTo', '');
+  if (!to) {
+    Logger.log('Sin alertEmailTo configurado, no se envia email: ' + subject);
+    return;
+  }
+  try {
+    MailApp.sendEmail({ to: to, subject: '[Rondas] ' + subject, body: text, name: 'Rondas Alertas' });
+  } catch (err) {
+    Logger.log('Error enviando email de alerta: ' + err.message);
+  }
+}
+
+function fmtTime_(ts) {
+  return Utilities.formatDate(new Date(ts), Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm');
+}
+
+function processMissedSlot_(slotStart, slotEnd) {
+  var result = getRoundStatus_(slotStart, slotEnd);
+  appendRow_('RoundsHistory', {
+    id: Utilities.getUuid(),
+    slotStart: slotStart,
+    slotEnd: slotEnd,
+    status: result.status,
+    scannedIds: JSON.stringify(result.scannedIds),
+    missing: JSON.stringify(
+      result.missing.map(function (c) {
+        return c.id;
+      })
+    ),
+  });
+
+  if (result.status === 'sin_configurar') return;
+
+  if (result.status !== 'completa') {
+    var missingNames = result.missing
+      .map(function (c) {
+        return c.name;
+      })
+      .join(', ');
+    var msg =
+      result.status === 'no_iniciada'
+        ? 'Ronda de ' + fmtTime_(slotStart) + ' a ' + fmtTime_(slotEnd) + ' NO se realizo (ningun punto escaneado).'
+        : 'Ronda de ' +
+          fmtTime_(slotStart) +
+          ' a ' +
+          fmtTime_(slotEnd) +
+          ' quedo INCOMPLETA. Puntos no visitados: ' +
+          missingNames +
+          '.';
+    addAlert_('ronda_incompleta', msg, { slotStart: slotStart, slotEnd: slotEnd });
+    sendAlertEmail_('Ronda no completada', msg);
+  }
+}
+
+function checkHeartbeat_(now) {
+  var shift = getCurrentShift_();
+  if (!shift) return;
+  var checkpoints = readAll_('Checkpoints').filter(function (c) {
+    return c.active;
+  });
+  if (checkpoints.length === 0) return;
+
+  var scans = readAll_('Scans').filter(function (s) {
+    return s.timestamp >= shift.startedAt;
+  });
+  var lastScanTime = shift.startedAt;
+  scans.forEach(function (s) {
+    if (s.timestamp > lastScanTime) lastScanTime = s.timestamp;
+  });
+
+  var minutesSinceLastScan = (now.getTime() - lastScanTime) / 60000;
+  var heartbeatMinutes = Number(getSetting_('heartbeatMinutes', 12));
+  var cooldown = Number(getSetting_('alertCooldownMinutes', 10));
+
+  if (minutesSinceLastScan > heartbeatMinutes) {
+    var lastAlert = getSetting_('lastHeartbeatAlertAt', '');
+    var minutesSinceLastAlert = lastAlert ? (now.getTime() - Number(lastAlert)) / 60000 : Infinity;
+    if (minutesSinceLastAlert > cooldown) {
+      var msg =
+        'Sin actividad desde hace ' +
+        Math.round(minutesSinceLastScan) +
+        ' minutos. Posible ausencia del puesto o vigilante dormido. Ultimo registro: ' +
+        fmtTime_(lastScanTime) +
+        '.';
+      addAlert_('sin_actividad', msg, { minutesSinceLastScan: Math.round(minutesSinceLastScan) });
+      sendAlertEmail_('Posible ausencia / sin actividad', msg);
+      setSetting_('lastHeartbeatAlertAt', now.getTime());
+    }
+  }
+}
+
+function pruneOldData_() {
+  // Evita que las lecturas se degraden con el tiempo: fuera escaneos de mas
+  // de 90 dias y sesiones caducadas.
+  var cutoff = Date.now() - 90 * 24 * 60 * 60 * 1000;
+  var sh = getSheet_('Scans');
+  var headers = headerRow_(sh);
+  var lastRow = sh.getLastRow();
+  if (lastRow >= 2) {
+    var tsCol = headers.indexOf('timestamp');
+    var values = sh.getRange(2, 1, lastRow - 1, headers.length).getValues();
+    for (var i = values.length - 1; i >= 0; i--) {
+      if (values[i][tsCol] < cutoff) sh.deleteRow(i + 2);
+    }
+  }
+  pruneExpiredSessions_();
+}
+
+/**
+ * Funcion que ejecuta el trigger de "cada 1 minuto". Comprueba si el bloque
+ * de ronda anterior se completo y si hace demasiado tiempo que no hay
+ * ningun escaneo (heartbeat), solo mientras haya un turno abierto.
+ */
+function checkRoundsAndHeartbeat() {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    var now = new Date();
+    var shift = getCurrentShift_();
+    var interval = getIntervalMinutes_();
+    var slot = getSlot_(now, interval);
+
+    if (shift) {
+      var lastChecked = getSetting_('lastCheckedSlotStart', '');
+      if (lastChecked === '' || lastChecked === null) {
+        setSetting_('lastCheckedSlotStart', slot.slotStart);
+      } else if (Number(lastChecked) !== slot.slotStart) {
+        var prevSlotStart = Number(lastChecked);
+        var prevSlotEnd = prevSlotStart + interval * 60000;
+        processMissedSlot_(prevSlotStart, prevSlotEnd);
+        setSetting_('lastCheckedSlotStart', slot.slotStart);
+      }
+      checkHeartbeat_(now);
+    } else {
+      setSetting_('lastCheckedSlotStart', slot.slotStart);
+    }
+
+    pruneOldData_();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Ejecuta esto UNA VEZ desde el editor de Apps Script para crear el trigger. */
+function setupTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'checkRoundsAndHeartbeat') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('checkRoundsAndHeartbeat').timeBased().everyMinutes(1).create();
+  Logger.log('Trigger creado: checkRoundsAndHeartbeat cada 1 minuto.');
+}
+
+// =============================================================================
+// Puesta en marcha inicial. Ejecuta initSheets() UNA VEZ desde el editor de
+// Apps Script (arriba, en el selector de funciones, elige "initSheets" y
+// pulsa "Ejecutar"; la primera vez pedira autorizar permisos, es normal).
+// Crea las pestanas que hacen falta con sus cabeceras, y si estan vacias
+// siembra el usuario supervisor y el vigilante inicial.
+// =============================================================================
+
+function initSheets() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  Object.keys(SHEETS_SCHEMA).forEach(function (name) {
+    var sh = ss.getSheetByName(name);
+    if (!sh) sh = ss.insertSheet(name);
+    var headers = SHEETS_SCHEMA[name];
+    sh.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sh.setFrozenRows(1);
+  });
+
+  // Borra la hoja de ejemplo por defecto si sigue vacia.
+  ['Hoja 1', 'Sheet1'].forEach(function (name) {
+    var sh = ss.getSheetByName(name);
+    if (sh && sh.getLastRow() === 0) ss.deleteSheet(sh);
+  });
+
+  seedUsersIfEmpty_();
+  seedSettingsIfEmpty_();
+
+  Logger.log('Hojas inicializadas correctamente.');
+}
+
+function seedUsersIfEmpty_() {
+  var users = readAll_('Users');
+  if (users.length > 0) return;
+
+  var supSalt = Utilities.getUuid();
+  var guardSalt = Utilities.getUuid();
+
+  appendRow_('Users', {
+    id: Utilities.getUuid(),
+    name: 'Supervisor',
+    username: 'supervisor',
+    passwordHash: hashPassword_('cambia-esta-clave', supSalt),
+    salt: supSalt,
+    role: 'supervisor',
+    createdAt: Date.now(),
+  });
+
+  appendRow_('Users', {
+    id: Utilities.getUuid(),
+    name: 'Vigilante',
+    username: 'vigilante',
+    passwordHash: hashPassword_('cambia-esta-clave', guardSalt),
+    salt: guardSalt,
+    role: 'guard',
+    createdAt: Date.now(),
+  });
+
+  Logger.log(
+    'Usuarios creados -> supervisor/cambia-esta-clave y vigilante/cambia-esta-clave. ' +
+      'CAMBIA ESTAS CONTRASENAS desde el panel de supervisor en cuanto entres.'
+  );
+}
+
+function seedSettingsIfEmpty_() {
+  var alreadySet = getSetting_('roundsPerHour', '');
+  if (alreadySet !== '') return; // ya se inicializo antes, no se pisa nada
+
+  setSetting_('roundsPerHour', 3);
+  setSetting_('heartbeatMinutes', 12);
+  setSetting_('alertCooldownMinutes', 10);
+  setSetting_('lastCheckedSlotStart', '');
+  setSetting_('lastHeartbeatAlertAt', '');
+  // Por defecto las alertas llegan a la cuenta de Google duena del script;
+  // se puede cambiar mas tarde editando la fila "alertEmailTo" en la pestana Settings.
+  setSetting_('alertEmailTo', Session.getActiveUser().getEmail());
+}
+
+// =============================================================================
+// Enrutador HTTP (doGet/doPost) y manejadores de cada accion
+// =============================================================================
 
 function extractParams_(e) {
   var params = {};
@@ -246,9 +624,7 @@ var ROUTES = {
   'rounds.settingsUpdate': { auth: true, roles: ['supervisor'], handler: handleRoundsSettingsUpdate_ },
 };
 
-// ---------------------------------------------------------------------------
-// Puntos de control
-// ---------------------------------------------------------------------------
+// --- Puntos de control ---
 
 function handleCheckpointsList_() {
   var list = readAll_('Checkpoints');
@@ -292,9 +668,7 @@ function handleCheckpointsDelete_(params) {
   return { ok: true };
 }
 
-// ---------------------------------------------------------------------------
-// Escaneos y estado de la ronda actual
-// ---------------------------------------------------------------------------
+// --- Escaneos y estado de la ronda actual ---
 
 function handleScansLookup_(params) {
   var cp = readAll_('Checkpoints').filter(function (c) {
@@ -358,9 +732,7 @@ function handleScansMine_(params, user) {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Turnos
-// ---------------------------------------------------------------------------
+// --- Turnos ---
 
 function handleShiftsCurrent_() {
   return getCurrentShift_();
@@ -402,9 +774,7 @@ function handleShiftsHistory_() {
   return shifts.slice(0, 100);
 }
 
-// ---------------------------------------------------------------------------
-// Alertas
-// ---------------------------------------------------------------------------
+// --- Alertas ---
 
 function handleAlertsList_() {
   var alerts = readAll_('Alerts');
@@ -421,9 +791,7 @@ function handleAlertsAck_(params) {
   return updated;
 }
 
-// ---------------------------------------------------------------------------
-// Usuarios
-// ---------------------------------------------------------------------------
+// --- Usuarios ---
 
 function handleUsersList_() {
   return readAll_('Users').map(publicUser_);
@@ -464,9 +832,7 @@ function handleUsersDelete_(params, user) {
   return { ok: true };
 }
 
-// ---------------------------------------------------------------------------
-// Historial de rondas y ajustes
-// ---------------------------------------------------------------------------
+// --- Historial de rondas y ajustes ---
 
 function handleRoundsHistory_() {
   var rows = readAll_('RoundsHistory');
