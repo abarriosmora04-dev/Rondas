@@ -1,0 +1,620 @@
+<!doctype html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <title>Rondas</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #1e293b;
+      --panel-2: #273449;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --bad: #ef4444;
+      --accent: #3b82f6;
+      --border: #334155;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    .wrap { max-width: 640px; margin: 0 auto; padding: 20px 16px 80px; }
+    .wrap.wide { max-width: 960px; }
+    h1, h2, h3 { margin-top: 0; }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 18px; margin-bottom: 16px; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .row.between { justify-content: space-between; }
+    input, select {
+      background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+      padding: 10px 12px; border-radius: 8px; font-size: 15px; width: 100%;
+    }
+    label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px; }
+    button {
+      background: var(--accent); color: white; border: none; padding: 12px 16px;
+      border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;
+    }
+    button.secondary { background: var(--panel-2); border: 1px solid var(--border); }
+    button.danger { background: var(--bad); }
+    button.ok { background: var(--ok); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.big { width: 100%; padding: 18px; font-size: 18px; }
+    .muted { color: var(--muted); }
+    .error { color: var(--bad); font-size: 14px; }
+    .success { color: var(--ok); font-size: 14px; }
+    .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+    .badge.completa { background: rgba(34,197,94,0.15); color: var(--ok); }
+    .badge.incompleta { background: rgba(245,158,11,0.15); color: var(--warn); }
+    .badge.no_iniciada { background: rgba(148,163,184,0.15); color: var(--muted); }
+    .badge.sin_configurar { background: rgba(148,163,184,0.15); color: var(--muted); }
+    .badge.panico, .badge.sin_actividad, .badge.ronda_incompleta { background: rgba(239,68,68,0.15); color: var(--bad); }
+    ul.checklist { list-style: none; padding: 0; margin: 10px 0 0; }
+    ul.checklist li { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+    ul.checklist li:last-child { border-bottom: none; }
+    .dot { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; }
+    .dot.done { background: var(--ok); }
+    .dot.pending { background: var(--panel-2); border: 2px solid var(--muted); }
+    .topbar {
+      display: flex; justify-content: space-between; align-items: center; padding: 14px 16px;
+      border-bottom: 1px solid var(--border); background: var(--panel); position: sticky; top: 0; z-index: 10;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+  <!-- LOGIN -->
+  <div id="loginView" class="wrap" style="padding-top: 60px;">
+    <h1>🔦 Rondas</h1>
+    <p class="muted">Control de rondas de vigilancia</p>
+    <div class="card">
+      <form id="loginForm">
+        <div style="margin-bottom: 12px;">
+          <label>Usuario</label>
+          <input type="text" id="loginUsername" autocapitalize="none" autocorrect="off" spellcheck="false" required />
+        </div>
+        <div style="margin-bottom: 12px;">
+          <label>Contraseña</label>
+          <input type="password" id="loginPassword" required />
+        </div>
+        <p class="error hidden" id="loginError"></p>
+        <button type="submit" class="big" id="loginSubmit">Entrar</button>
+      </form>
+    </div>
+    <p class="muted" id="scanPendingNote" style="text-align:center;"></p>
+  </div>
+
+  <!-- VIGILANTE -->
+  <div id="guardView" class="hidden">
+    <div class="topbar">
+      <strong>🔦 Rondas</strong>
+      <div class="row">
+        <span class="muted" id="guardUserName"></span>
+        <button class="secondary" onclick="logout()">Salir</button>
+      </div>
+    </div>
+    <div class="wrap">
+      <div class="card hidden" id="scanBanner"></div>
+
+      <div class="card">
+        <h3>Turno</h3>
+        <p id="shiftStatus" class="muted">Comprobando...</p>
+        <div class="row">
+          <button class="ok" id="startShiftBtn" onclick="startShift()">Iniciar turno</button>
+          <button class="danger hidden" id="endShiftBtn" onclick="endShift()">Terminar turno</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row between">
+          <h3>Ronda actual</h3>
+          <span class="badge" id="roundBadge">-</span>
+        </div>
+        <p class="muted" id="roundWindow"></p>
+        <ul class="checklist" id="checklist"></ul>
+        <p class="muted" style="margin-top:10px;">
+          Escanea el código QR de cada punto con la cámara del móvil. Se abrirá esta app y se
+          registrará automáticamente.
+        </p>
+      </div>
+
+      <div class="card">
+        <button class="danger big" onclick="panic()">🆘 EMERGENCIA</button>
+        <p class="muted" style="margin-top:8px;">Avisa inmediatamente al supervisor.</p>
+      </div>
+
+      <div class="card">
+        <h3>Mis últimos registros</h3>
+        <table>
+          <thead><tr><th>Hora</th><th>Punto</th></tr></thead>
+          <tbody id="historyBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- SUPERVISOR -->
+  <div id="supervisorView" class="hidden">
+    <div class="topbar">
+      <strong>🔦 Rondas · Supervisor</strong>
+      <div class="row">
+        <span class="muted" id="supervisorUserName"></span>
+        <button class="secondary" onclick="logout()">Salir</button>
+      </div>
+    </div>
+    <div class="wrap wide">
+
+      <div class="card">
+        <div class="row between">
+          <h3>Estado en vivo</h3>
+          <span class="badge" id="supRoundBadge">-</span>
+        </div>
+        <p class="muted" id="supShiftStatus">Comprobando...</p>
+        <p class="muted" id="supRoundWindow"></p>
+        <ul class="checklist" id="supChecklist"></ul>
+      </div>
+
+      <div class="card">
+        <h3>Alertas recientes</h3>
+        <table>
+          <thead><tr><th>Hora</th><th>Tipo</th><th>Mensaje</th><th></th></tr></thead>
+          <tbody id="alertsBody"></tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h3>Historial de rondas</h3>
+        <table>
+          <thead><tr><th>Ventana</th><th>Estado</th></tr></thead>
+          <tbody id="roundsBody"></tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h3>Puntos de control</h3>
+        <form id="cpForm" class="row" style="margin-bottom:12px;">
+          <input type="text" id="cpName" placeholder="Nombre del punto (ej. Entrada Norte)" required />
+          <button type="submit">Añadir</button>
+        </form>
+        <table>
+          <thead><tr><th>Nombre</th><th>Activo</th><th>QR</th><th></th></tr></thead>
+          <tbody id="checkpointsBody"></tbody>
+        </table>
+        <p class="muted">Imprime el QR de cada punto y colócalo físicamente en esa ubicación del aparcamiento/garita.</p>
+      </div>
+
+      <div class="card">
+        <h3>Configuración de rondas</h3>
+        <form id="settingsForm">
+          <div class="row">
+            <div style="flex:1;">
+              <label>Rondas por hora</label>
+              <input type="number" id="roundsPerHour" min="1" max="12" required />
+            </div>
+            <div style="flex:1;">
+              <label>Aviso si no hay actividad (minutos)</label>
+              <input type="number" id="heartbeatMinutes" min="1" required />
+            </div>
+          </div>
+          <button type="submit" style="margin-top:12px;">Guardar</button>
+          <span class="success hidden" id="settingsSaved">Guardado</span>
+        </form>
+      </div>
+
+      <div class="card">
+        <h3>Usuarios</h3>
+        <form id="userForm" class="row" style="margin-bottom:12px;">
+          <input type="text" id="uName" placeholder="Nombre" required style="flex:1;" />
+          <input type="text" id="uUsername" placeholder="Usuario" required style="flex:1;" autocapitalize="none" autocorrect="off" spellcheck="false" />
+          <input type="password" id="uPassword" placeholder="Contraseña" required style="flex:1;" />
+          <select id="uRole" style="flex:1;">
+            <option value="guard">Vigilante</option>
+            <option value="supervisor">Supervisor</option>
+          </select>
+          <button type="submit">Crear</button>
+        </form>
+        <table>
+          <thead><tr><th>Nombre</th><th>Usuario</th><th>Rol</th><th></th></tr></thead>
+          <tbody id="usersBody"></tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // URL publica de este despliegue (inyectada por el servidor); se usa
+    // para construir los QR de los puntos de control.
+    const DEPLOY_URL = <?!= JSON.stringify(scriptUrl) ?>;
+
+    // ---------------------------------------------------------------------
+    // Sesion y llamadas al backend via google.script.run (mismo origen,
+    // sin CORS posible porque no hay ninguna peticion HTTP entre dominios).
+    // ---------------------------------------------------------------------
+    const SESSION_KEY = 'rondas_session';
+    let session = { token: '', user: null };
+    let pendingScanCode = null;
+    let guardPollTimer = null;
+    let supervisorPollTimer = null;
+
+    function saveSession() {
+      try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)); } catch (e) {}
+    }
+    function loadSession() {
+      try {
+        const raw = localStorage.getItem(SESSION_KEY);
+        if (raw) return JSON.parse(raw);
+      } catch (e) {}
+      return null;
+    }
+    function clearSession() {
+      session = { token: '', user: null };
+      try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
+    }
+
+    function apiCall(action, body) {
+      return new Promise((resolve, reject) => {
+        if (!window.google || !google.script || !google.script.run) {
+          reject(new Error('No se pudo conectar con el servidor de Apps Script.'));
+          return;
+        }
+        const payload = Object.assign({ action, token: session.token }, body || {});
+        google.script.run
+          .withSuccessHandler((data) => resolve(data))
+          .withFailureHandler((err) => reject(new Error((err && err.message) || String(err))))
+          .apiCall(payload);
+      });
+    }
+
+    function logout() {
+      clearSession();
+      stopPolling();
+      showView('login');
+    }
+
+    // ---------------------------------------------------------------------
+    // Cambio de vista
+    // ---------------------------------------------------------------------
+    function showView(name) {
+      document.getElementById('loginView').classList.toggle('hidden', name !== 'login');
+      document.getElementById('guardView').classList.toggle('hidden', name !== 'guard');
+      document.getElementById('supervisorView').classList.toggle('hidden', name !== 'supervisor');
+    }
+
+    function stopPolling() {
+      if (guardPollTimer) clearInterval(guardPollTimer);
+      if (supervisorPollTimer) clearInterval(supervisorPollTimer);
+      guardPollTimer = null;
+      supervisorPollTimer = null;
+    }
+
+    async function enterAsGuard() {
+      document.getElementById('guardUserName').textContent = session.user.name;
+      showView('guard');
+      await refreshGuardAll();
+      guardPollTimer = setInterval(refreshGuardAll, 15000);
+      if (pendingScanCode) {
+        const code = pendingScanCode;
+        pendingScanCode = null;
+        await registerScan(code);
+      }
+    }
+
+    async function enterAsSupervisor() {
+      document.getElementById('supervisorUserName').textContent = session.user.name;
+      showView('supervisor');
+      await refreshSupervisorAll();
+      supervisorPollTimer = setInterval(
+        () => Promise.all([refreshSupLive(), refreshAlerts(), refreshRoundsHistory()]).catch(console.error),
+        15000
+      );
+    }
+
+    async function enterAs(user) {
+      if (user.role === 'supervisor') await enterAsSupervisor();
+      else await enterAsGuard();
+    }
+
+    // ---------------------------------------------------------------------
+    // Login
+    // ---------------------------------------------------------------------
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('loginUsername').value.trim();
+      const password = document.getElementById('loginPassword').value;
+      const errEl = document.getElementById('loginError');
+      const submitBtn = document.getElementById('loginSubmit');
+      errEl.classList.add('hidden');
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Entrando...';
+      try {
+        const data = await apiCall('login', { username, password });
+        session = { token: data.token, user: data.user };
+        saveSession();
+        await enterAs(data.user);
+      } catch (err) {
+        errEl.textContent = err.message;
+        errEl.classList.remove('hidden');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Entrar';
+      }
+    });
+
+    // ---------------------------------------------------------------------
+    // Panel del vigilante
+    // ---------------------------------------------------------------------
+    async function registerScan(code) {
+      const banner = document.getElementById('scanBanner');
+      banner.classList.remove('hidden');
+      banner.innerHTML = '<p>Registrando punto de control...</p>';
+      try {
+        const data = await apiCall('scans.create', { code });
+        banner.innerHTML = `<p class="success">✅ Registrado: <strong>${data.checkpoint.name}</strong> - ${new Date(data.timestamp).toLocaleTimeString('es-ES')}</p>`;
+        await refreshGuardAll();
+      } catch (err) {
+        banner.innerHTML = `<p class="error">⚠️ ${err.message}</p>`;
+      }
+      setTimeout(() => banner.classList.add('hidden'), 8000);
+    }
+
+    async function refreshShift() {
+      const currentShift = await apiCall('shifts.current');
+      const statusEl = document.getElementById('shiftStatus');
+      const startBtn = document.getElementById('startShiftBtn');
+      const endBtn = document.getElementById('endShiftBtn');
+      if (currentShift) {
+        statusEl.textContent = `Turno abierto desde las ${new Date(currentShift.startedAt).toLocaleTimeString('es-ES')} (${currentShift.guardName})`;
+        startBtn.classList.add('hidden');
+        endBtn.classList.remove('hidden');
+      } else {
+        statusEl.textContent = 'No hay turno abierto.';
+        startBtn.classList.remove('hidden');
+        endBtn.classList.add('hidden');
+      }
+    }
+
+    async function startShift() {
+      try {
+        await apiCall('shifts.start');
+        await refreshShift();
+      } catch (e) { alert(e.message); }
+    }
+
+    async function endShift() {
+      if (!confirm('¿Seguro que quieres terminar el turno?')) return;
+      try {
+        await apiCall('shifts.end');
+        await refreshShift();
+      } catch (e) { alert(e.message); }
+    }
+
+    async function panic() {
+      if (!confirm('Se va a avisar al supervisor de una EMERGENCIA. ¿Confirmar?')) return;
+      try {
+        await apiCall('shifts.panic');
+        alert('Aviso enviado.');
+      } catch (e) { alert(e.message); }
+    }
+
+    const statusLabels = {
+      completa: 'Completa',
+      incompleta: 'Incompleta',
+      no_iniciada: 'No iniciada',
+      sin_configurar: 'Sin puntos configurados',
+    };
+    const alertLabels = {
+      ronda_incompleta: 'Ronda incompleta',
+      sin_actividad: 'Sin actividad',
+      panico: 'EMERGENCIA',
+    };
+
+    function renderRound(data, badgeEl, windowEl, listEl) {
+      badgeEl.textContent = statusLabels[data.status] || data.status;
+      badgeEl.className = `badge ${data.status}`;
+      const start = new Date(data.slotStart).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+      const end = new Date(data.slotEnd).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+      windowEl.textContent = `Ventana de ${start} a ${end}`;
+      listEl.innerHTML = data.checkpoints.length === 0
+        ? '<li class="muted">El supervisor todavía no ha configurado puntos de control.</li>'
+        : data.checkpoints.map((c) => `<li><span class="dot ${c.scanned ? 'done' : 'pending'}"></span> ${c.name}</li>`).join('');
+    }
+
+    async function refreshRound() {
+      const data = await apiCall('scans.currentRound');
+      renderRound(data, document.getElementById('roundBadge'), document.getElementById('roundWindow'), document.getElementById('checklist'));
+    }
+
+    async function refreshHistory() {
+      const rows = await apiCall('scans.mine');
+      document.getElementById('historyBody').innerHTML = rows
+        .map((r) => `<tr><td>${new Date(r.timestamp).toLocaleString('es-ES')}</td><td>${r.checkpointName}</td></tr>`)
+        .join('');
+    }
+
+    async function refreshGuardAll() {
+      try {
+        await Promise.all([refreshShift(), refreshRound(), refreshHistory()]);
+      } catch (e) { console.error(e); }
+    }
+
+    // ---------------------------------------------------------------------
+    // Panel del supervisor
+    // ---------------------------------------------------------------------
+    async function refreshSupLive() {
+      const [round, shift] = await Promise.all([apiCall('scans.currentRound'), apiCall('shifts.current')]);
+      document.getElementById('supShiftStatus').textContent = shift
+        ? `Turno abierto: ${shift.guardName}, desde las ${new Date(shift.startedAt).toLocaleTimeString('es-ES')}`
+        : 'No hay ningún turno abierto ahora mismo.';
+      renderRound(round, document.getElementById('supRoundBadge'), document.getElementById('supRoundWindow'), document.getElementById('supChecklist'));
+    }
+
+    async function refreshAlerts() {
+      const alerts = await apiCall('alerts.list');
+      document.getElementById('alertsBody').innerHTML = alerts
+        .slice(0, 30)
+        .map((a) => `<tr>
+            <td>${new Date(a.createdAt).toLocaleString('es-ES')}</td>
+            <td><span class="badge ${a.type}">${alertLabels[a.type] || a.type}</span></td>
+            <td>${a.message}</td>
+            <td>${a.acknowledged ? '✔️' : `<button class="secondary" onclick="ackAlert('${a.id}')">Marcar visto</button>`}</td>
+          </tr>`)
+        .join('');
+    }
+
+    async function ackAlert(id) {
+      await apiCall('alerts.ack', { id });
+      refreshAlerts();
+    }
+
+    async function refreshRoundsHistory() {
+      const rows = await apiCall('rounds.history');
+      document.getElementById('roundsBody').innerHTML = rows
+        .slice(0, 30)
+        .map((r) => {
+          const start = new Date(r.slotStart).toLocaleString('es-ES');
+          const end = new Date(r.slotEnd).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+          return `<tr><td>${start} - ${end}</td><td><span class="badge ${r.status}">${statusLabels[r.status] || r.status}</span></td></tr>`;
+        })
+        .join('');
+    }
+
+    function qrImageUrl(code) {
+      const scanUrl = DEPLOY_URL + '?code=' + encodeURIComponent(code);
+      return 'https://api.qrserver.com/v1/create-qr-code/?size=400x400&margin=10&data=' + encodeURIComponent(scanUrl);
+    }
+
+    async function refreshCheckpoints() {
+      const cps = await apiCall('checkpoints.list');
+      document.getElementById('checkpointsBody').innerHTML = cps
+        .map((c) => `<tr>
+            <td>${c.name}</td>
+            <td>${c.active ? '✔️' : '❌'}</td>
+            <td><a href="${qrImageUrl(c.code)}" target="_blank" rel="noopener">Ver QR</a></td>
+            <td class="row">
+              <button class="secondary" onclick="toggleCheckpoint('${c.id}', ${!c.active})">${c.active ? 'Desactivar' : 'Activar'}</button>
+              <button class="danger" onclick="deleteCheckpoint('${c.id}')">Eliminar</button>
+            </td>
+          </tr>`)
+        .join('');
+    }
+
+    async function toggleCheckpoint(id, active) {
+      await apiCall('checkpoints.update', { id, active });
+      refreshCheckpoints();
+    }
+
+    async function deleteCheckpoint(id) {
+      if (!confirm('¿Eliminar este punto de control?')) return;
+      await apiCall('checkpoints.delete', { id });
+      refreshCheckpoints();
+    }
+
+    document.getElementById('cpForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('cpName').value.trim();
+      if (!name) return;
+      await apiCall('checkpoints.create', { name });
+      document.getElementById('cpName').value = '';
+      refreshCheckpoints();
+    });
+
+    async function refreshSettings() {
+      const s = await apiCall('rounds.settingsGet');
+      document.getElementById('roundsPerHour').value = s.roundsPerHour;
+      document.getElementById('heartbeatMinutes').value = s.heartbeatMinutes;
+    }
+
+    document.getElementById('settingsForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      await apiCall('rounds.settingsUpdate', {
+        roundsPerHour: Number(document.getElementById('roundsPerHour').value),
+        heartbeatMinutes: Number(document.getElementById('heartbeatMinutes').value),
+      });
+      const saved = document.getElementById('settingsSaved');
+      saved.classList.remove('hidden');
+      setTimeout(() => saved.classList.add('hidden'), 2000);
+    });
+
+    async function refreshUsers() {
+      const users = await apiCall('users.list');
+      document.getElementById('usersBody').innerHTML = users
+        .map((u) => `<tr>
+            <td>${u.name}</td>
+            <td>${u.username}</td>
+            <td>${u.role === 'supervisor' ? 'Supervisor' : 'Vigilante'}</td>
+            <td>${u.id === session.user.id ? '' : `<button class="danger" onclick="deleteUser('${u.id}')">Eliminar</button>`}</td>
+          </tr>`)
+        .join('');
+    }
+
+    async function deleteUser(id) {
+      if (!confirm('¿Eliminar este usuario?')) return;
+      await apiCall('users.delete', { id });
+      refreshUsers();
+    }
+
+    document.getElementById('userForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        await apiCall('users.create', {
+          name: document.getElementById('uName').value.trim(),
+          username: document.getElementById('uUsername').value.trim(),
+          password: document.getElementById('uPassword').value,
+          role: document.getElementById('uRole').value,
+        });
+        e.target.reset();
+        refreshUsers();
+      } catch (err) { alert(err.message); }
+    });
+
+    async function refreshSupervisorAll() {
+      try {
+        await Promise.all([refreshSupLive(), refreshAlerts(), refreshRoundsHistory(), refreshCheckpoints(), refreshSettings(), refreshUsers()]);
+      } catch (e) { console.error(e); }
+    }
+
+    // ---------------------------------------------------------------------
+    // Arranque: recupera sesion y codigo de escaneo pendiente (si el QR
+    // trajo ?code=... en la URL), y muestra la vista que corresponda.
+    // ---------------------------------------------------------------------
+    async function init(urlParams) {
+      pendingScanCode = (urlParams && urlParams.code) || null;
+      if (pendingScanCode) {
+        document.getElementById('scanPendingNote').textContent =
+          'Inicia sesión como vigilante para registrar el punto escaneado.';
+      }
+
+      const saved = loadSession();
+      if (saved && saved.token) {
+        session = saved;
+        try {
+          const data = await apiCall('me');
+          session.user = data.user;
+          saveSession();
+          await enterAs(data.user);
+          return;
+        } catch (e) {
+          clearSession();
+        }
+      }
+      showView('login');
+    }
+
+    if (window.google && google.script && google.script.url && google.script.url.getLocation) {
+      google.script.url.getLocation((loc) => init(loc.parameter));
+    } else {
+      init({});
+    }
+  </script>
+</body>
+</html>

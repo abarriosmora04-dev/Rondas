@@ -529,75 +529,49 @@ function seedSettingsIfEmpty_() {
 }
 
 // =============================================================================
-// Enrutador HTTP (doGet/doPost) y manejadores de cada accion
+// Punto de entrada web: sirve la propia app (Index.html) y expone apiCall()
+// para que el cliente la invoque via google.script.run. Al vivir la pagina y
+// el backend en el mismo origen no hay ninguna llamada entre dominios
+// distintos de por medio, asi que no hace falta lidiar con CORS de ningun
+// tipo (ni fetch, ni JSONP): google.script.run es el puente oficial de
+// Apps Script entre el HTML servido y las funciones del servidor.
 // =============================================================================
 
-function extractParams_(e) {
-  var params = {};
-  if (e && e.parameter) {
-    Object.keys(e.parameter).forEach(function (k) {
-      params[k] = e.parameter[k];
-    });
-  }
-  if (e && e.postData && e.postData.contents) {
-    try {
-      var body = JSON.parse(e.postData.contents);
-      Object.keys(body).forEach(function (k) {
-        params[k] = body[k];
-      });
-    } catch (err) {
-      // El cuerpo no era JSON: se ignora y se usan solo los parametros de query.
-    }
-  }
-  return params;
-}
-
-function jsonOutput_(obj, callback) {
-  // Si viene un "callback" (JSONP) devolvemos JavaScript ejecutable en vez de
-  // JSON puro. Esto evita por completo los problemas de CORS entre dominios
-  // distintos que sufren los Web Apps de Apps Script con fetch() normal: una
-  // etiqueta <script src="..."> no esta sujeta a la politica de CORS.
-  if (callback) {
-    return ContentService.createTextOutput(callback + '(' + JSON.stringify(obj) + ');').setMimeType(
-      ContentService.MimeType.JAVASCRIPT
-    );
-  }
-  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
-}
-
 function doGet(e) {
-  return route_(e);
+  var template = HtmlService.createTemplateFromFile('Index');
+  template.scriptUrl = ScriptApp.getService().getUrl();
+  return template
+    .evaluate()
+    .setTitle('Rondas')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1');
 }
 
-function doPost(e) {
-  return route_(e);
-}
-
-function route_(e) {
-  var params = extractParams_(e);
+/**
+ * Unico punto de entrada que llama el cliente (via google.script.run.apiCall).
+ * "params" llega ya como objeto (google.script.run serializa JS <-> Apps
+ * Script automaticamente), con al menos { action, token, ...datos }.
+ * Devuelve el resultado del handler directamente, o lanza un Error que
+ * google.script.run entrega al withFailureHandler() del cliente.
+ */
+function apiCall(params) {
+  params = params || {};
   var action = params.action;
-  var callback = params.callback;
+  if (!action) throw new Error('Falta el parametro action');
+  var spec = ROUTES[action];
+  if (!spec) throw new Error('Accion no reconocida: ' + action);
+  var user = null;
+  if (spec.auth) {
+    user = getUserByToken_(params.token);
+    if (spec.roles && spec.roles.indexOf(user.role) === -1) {
+      throw new Error('No autorizado');
+    }
+  }
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
   try {
-    if (!action) throw new Error('Falta el parametro action');
-    var spec = ROUTES[action];
-    if (!spec) throw new Error('Accion no reconocida: ' + action);
-    var user = null;
-    if (spec.auth) {
-      user = getUserByToken_(params.token);
-      if (spec.roles && spec.roles.indexOf(user.role) === -1) {
-        throw new Error('No autorizado');
-      }
-    }
-    var lock = LockService.getScriptLock();
-    lock.waitLock(10000);
-    try {
-      var data = spec.handler(params, user);
-      return jsonOutput_({ ok: true, data: data }, callback);
-    } finally {
-      lock.releaseLock();
-    }
-  } catch (err) {
-    return jsonOutput_({ ok: false, error: (err && err.message) || String(err) }, callback);
+    return spec.handler(params, user);
+  } finally {
+    lock.releaseLock();
   }
 }
 
