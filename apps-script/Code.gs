@@ -552,7 +552,16 @@ function extractParams_(e) {
   return params;
 }
 
-function jsonOutput_(obj) {
+function jsonOutput_(obj, callback) {
+  // Si viene un "callback" (JSONP) devolvemos JavaScript ejecutable en vez de
+  // JSON puro. Esto evita por completo los problemas de CORS entre dominios
+  // distintos que sufren los Web Apps de Apps Script con fetch() normal: una
+  // etiqueta <script src="..."> no esta sujeta a la politica de CORS.
+  if (callback) {
+    return ContentService.createTextOutput(callback + '(' + JSON.stringify(obj) + ');').setMimeType(
+      ContentService.MimeType.JAVASCRIPT
+    );
+  }
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
 
@@ -567,6 +576,7 @@ function doPost(e) {
 function route_(e) {
   var params = extractParams_(e);
   var action = params.action;
+  var callback = params.callback;
   try {
     if (!action) throw new Error('Falta el parametro action');
     var spec = ROUTES[action];
@@ -582,12 +592,12 @@ function route_(e) {
     lock.waitLock(10000);
     try {
       var data = spec.handler(params, user);
-      return jsonOutput_({ ok: true, data: data });
+      return jsonOutput_({ ok: true, data: data }, callback);
     } finally {
       lock.releaseLock();
     }
   } catch (err) {
-    return jsonOutput_({ ok: false, error: (err && err.message) || String(err) });
+    return jsonOutput_({ ok: false, error: (err && err.message) || String(err) }, callback);
   }
 }
 
