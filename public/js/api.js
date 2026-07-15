@@ -1,6 +1,9 @@
 // Cliente para el backend en Google Apps Script. Todas las llamadas van por
-// POST con Content-Type: text/plain (asi se evita el preflight de CORS que
-// Apps Script no gestiona bien) y el cuerpo es un JSON con { action, token, ...datos }.
+// GET con los datos en la query string: los Web Apps de Apps Script sirven
+// el contenido tras una redireccion a googleusercontent.com, y esa
+// redireccion pierde las cabeceras CORS en peticiones POST/fetch de forma
+// bastante habitual entre navegadores. Con GET (sin body ni cabeceras
+// personalizadas) es la forma mas fiable de que funcione entre origenes.
 // La respuesta siempre es HTTP 200 con { ok: true, data } o { ok: false, error }.
 
 const Api = (() => {
@@ -39,14 +42,16 @@ const Api = (() => {
       throw new Error('Falta configurar la URL de Apps Script.');
     }
     const payload = Object.assign({ action, token: getToken() }, body || {});
+    const params = new URLSearchParams();
+    Object.keys(payload).forEach((k) => {
+      if (payload[k] !== undefined && payload[k] !== null) params.set(k, payload[k]);
+    });
+    const separator = scriptUrl.includes('?') ? '&' : '?';
+    const url = scriptUrl + separator + params.toString();
 
     let res;
     try {
-      res = await fetch(scriptUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(payload),
-      });
+      res = await fetch(url, { method: 'GET' });
     } catch (e) {
       throw new Error('No se pudo conectar con el backend. Revisa la URL de Apps Script y tu conexion.');
     }
