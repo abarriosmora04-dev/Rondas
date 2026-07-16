@@ -257,7 +257,7 @@
     // asincrona (en vez de por plantilla) para que la pagina sea HTML
     // estatico normal y ningun fallo aqui pueda romper el resto del script.
     // Se usa solo para construir los QR de los puntos de control.
-    let DEPLOY_URL = '';
+    var DEPLOY_URL = '';
     if (window.google && google.script && google.script.run) {
       google.script.run
         .withSuccessHandler((url) => { DEPLOY_URL = url || ''; })
@@ -269,18 +269,18 @@
     // Sesion y llamadas al backend via google.script.run (mismo origen,
     // sin CORS posible porque no hay ninguna peticion HTTP entre dominios).
     // ---------------------------------------------------------------------
-    const SESSION_KEY = 'rondas_session';
-    let session = { token: '', user: null };
-    let pendingScanCode = null;
-    let auxiliarPollTimer = null;
-    let supervisorPollTimer = null;
+    var SESSION_KEY = 'rondas_session';
+    var session = { token: '', user: null };
+    var pendingScanCode = null;
+    var auxiliarPollTimer = null;
+    var supervisorPollTimer = null;
 
     function saveSession() {
       try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)); } catch (e) {}
     }
     function loadSession() {
       try {
-        const raw = localStorage.getItem(SESSION_KEY);
+        var raw = localStorage.getItem(SESSION_KEY);
         if (raw) return JSON.parse(raw);
       } catch (e) {}
       return null;
@@ -296,13 +296,13 @@
           reject(new Error('No se pudo conectar con el servidor de Apps Script.'));
           return;
         }
-        let settled = false;
-        const timer = setTimeout(() => {
+        var settled = false;
+        var timer = setTimeout(() => {
           if (settled) return;
           settled = true;
           reject(new Error('El servidor no ha respondido en 25 segundos (accion: ' + action + ').'));
         }, 25000);
-        const payload = Object.assign({ action, token: session.token }, body || {});
+        var payload = Object.assign({ action, token: session.token }, body || {});
         google.script.run
           .withSuccessHandler((data) => {
             if (settled) return;
@@ -348,7 +348,7 @@
       await refreshAuxiliarAll();
       auxiliarPollTimer = setInterval(refreshAuxiliarAll, 15000);
       if (pendingScanCode) {
-        const code = pendingScanCode;
+        var code = pendingScanCode;
         pendingScanCode = null;
         await registerScan(code);
       }
@@ -373,10 +373,10 @@
     // Login
     // ---------------------------------------------------------------------
     async function doLogin() {
-      const username = document.getElementById('loginUsername').value.trim();
-      const password = document.getElementById('loginPassword').value;
-      const errEl = document.getElementById('loginError');
-      const submitBtn = document.getElementById('loginSubmit');
+      var username = document.getElementById('loginUsername').value.trim();
+      var password = document.getElementById('loginPassword').value;
+      var errEl = document.getElementById('loginError');
+      var submitBtn = document.getElementById('loginSubmit');
       errEl.classList.add('hidden');
       if (!username || !password) {
         errEl.textContent = 'Usuario y contraseña son obligatorios';
@@ -386,7 +386,7 @@
       submitBtn.disabled = true;
       submitBtn.textContent = 'Entrando...';
       try {
-        const data = await apiCall('login', { username, password });
+        var data = await apiCall('login', { username, password });
         session = { token: data.token, user: data.user };
         saveSession();
         await enterAs(data.user);
@@ -403,11 +403,11 @@
     // Panel del auxiliar
     // ---------------------------------------------------------------------
     async function registerScan(code) {
-      const banner = document.getElementById('scanBanner');
+      var banner = document.getElementById('scanBanner');
       banner.classList.remove('hidden');
       banner.innerHTML = '<p>Registrando punto de control...</p>';
       try {
-        const data = await apiCall('scans.create', { code });
+        var data = await apiCall('scans.create', { code });
         banner.innerHTML = '<p class="success">✅ Registrado: <strong>' + data.checkpoint.name + '</strong> - ' + new Date(data.timestamp).toLocaleTimeString('es-ES') + '</p>';
         await refreshAuxiliarAll();
       } catch (err) {
@@ -417,10 +417,10 @@
     }
 
     async function refreshShift() {
-      const currentShift = await apiCall('shifts.current');
-      const statusEl = document.getElementById('shiftStatus');
-      const startBtn = document.getElementById('startShiftBtn');
-      const endBtn = document.getElementById('endShiftBtn');
+      var currentShift = await apiCall('shifts.current');
+      var statusEl = document.getElementById('shiftStatus');
+      var startBtn = document.getElementById('startShiftBtn');
+      var endBtn = document.getElementById('endShiftBtn');
       if (currentShift) {
         statusEl.textContent = 'Turno abierto desde las ' + new Date(currentShift.startedAt).toLocaleTimeString('es-ES') + ' (' + currentShift.auxiliarName + ')';
         startBtn.classList.add('hidden');
@@ -455,13 +455,13 @@
       } catch (e) { alert(e.message); }
     }
 
-    const statusLabels = {
+    var statusLabels = {
       completa: 'Completa',
       incompleta: 'Incompleta',
       no_iniciada: 'No iniciada',
       sin_configurar: 'Sin puntos configurados',
     };
-    const alertLabels = {
+    var alertLabels = {
       ronda_incompleta: 'Ronda incompleta',
       sin_actividad: 'Sin actividad',
       panico: 'EMERGENCIA',
@@ -470,8 +470,8 @@
     function renderRound(data, badgeEl, windowEl, listEl) {
       badgeEl.textContent = statusLabels[data.status] || data.status;
       badgeEl.className = 'badge ' + data.status;
-      const start = new Date(data.slotStart).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-      const end = new Date(data.slotEnd).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+      var start = new Date(data.slotStart).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+      var end = new Date(data.slotEnd).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
       windowEl.textContent = 'Ventana de ' + start + ' a ' + end;
       listEl.innerHTML = data.checkpoints.length === 0
         ? '<li class="muted">El supervisor todavía no ha configurado puntos de control.</li>'
@@ -479,12 +479,12 @@
     }
 
     async function refreshRound() {
-      const data = await apiCall('scans.currentRound');
+      var data = await apiCall('scans.currentRound');
       renderRound(data, document.getElementById('roundBadge'), document.getElementById('roundWindow'), document.getElementById('checklist'));
     }
 
     async function refreshHistory() {
-      const rows = await apiCall('scans.mine');
+      var rows = await apiCall('scans.mine');
       document.getElementById('historyBody').innerHTML = rows
         .map((r) => '<tr><td>' + new Date(r.timestamp).toLocaleString('es-ES') + '</td><td>' + r.checkpointName + '</td></tr>')
         .join('');
@@ -500,7 +500,7 @@
     // Panel del supervisor
     // ---------------------------------------------------------------------
     async function refreshSupLive() {
-      const [round, shift] = await Promise.all([apiCall('scans.currentRound'), apiCall('shifts.current')]);
+      var [round, shift] = await Promise.all([apiCall('scans.currentRound'), apiCall('shifts.current')]);
       document.getElementById('supShiftStatus').textContent = shift
         ? 'Turno abierto: ' + shift.auxiliarName + ', desde las ' + new Date(shift.startedAt).toLocaleTimeString('es-ES')
         : 'No hay ningún turno abierto ahora mismo.';
@@ -508,11 +508,11 @@
     }
 
     async function refreshAlerts() {
-      const alerts = await apiCall('alerts.list');
+      var alerts = await apiCall('alerts.list');
       document.getElementById('alertsBody').innerHTML = alerts
         .slice(0, 30)
         .map((a) => {
-          const ackCell = a.acknowledged ? '✔️' : '<button class="secondary" onclick="ackAlert(\'' + a.id + '\')">Marcar visto</button>';
+          var ackCell = a.acknowledged ? '✔️' : '<button class="secondary" onclick="ackAlert(\'' + a.id + '\')">Marcar visto</button>';
           return '<tr>' +
             '<td>' + new Date(a.createdAt).toLocaleString('es-ES') + '</td>' +
             '<td><span class="badge ' + a.type + '">' + (alertLabels[a.type] || a.type) + '</span></td>' +
@@ -529,24 +529,24 @@
     }
 
     async function refreshRoundsHistory() {
-      const rows = await apiCall('rounds.history');
+      var rows = await apiCall('rounds.history');
       document.getElementById('roundsBody').innerHTML = rows
         .slice(0, 30)
         .map((r) => {
-          const start = new Date(r.slotStart).toLocaleString('es-ES');
-          const end = new Date(r.slotEnd).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+          var start = new Date(r.slotStart).toLocaleString('es-ES');
+          var end = new Date(r.slotEnd).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
           return '<tr><td>' + start + ' - ' + end + '</td><td><span class="badge ' + r.status + '">' + (statusLabels[r.status] || r.status) + '</span></td></tr>';
         })
         .join('');
     }
 
     function qrImageUrl(code) {
-      const scanUrl = DEPLOY_URL + '?code=' + encodeURIComponent(code);
+      var scanUrl = DEPLOY_URL + '?code=' + encodeURIComponent(code);
       return 'https://api.qrserver.com/v1/create-qr-code/?size=400x400&margin=10&data=' + encodeURIComponent(scanUrl);
     }
 
     async function refreshCheckpoints() {
-      const cps = await apiCall('checkpoints.list');
+      var cps = await apiCall('checkpoints.list');
       document.getElementById('checkpointsBody').innerHTML = cps
         .map((c) => {
           return '<tr>' +
@@ -574,7 +574,7 @@
     }
 
     async function doCreateCheckpoint() {
-      const name = document.getElementById('cpName').value.trim();
+      var name = document.getElementById('cpName').value.trim();
       if (!name) return;
       await apiCall('checkpoints.create', { name });
       document.getElementById('cpName').value = '';
@@ -582,7 +582,7 @@
     }
 
     async function refreshSettings() {
-      const s = await apiCall('rounds.settingsGet');
+      var s = await apiCall('rounds.settingsGet');
       document.getElementById('roundsPerHour').value = s.roundsPerHour;
       document.getElementById('heartbeatMinutes').value = s.heartbeatMinutes;
     }
@@ -592,16 +592,16 @@
         roundsPerHour: Number(document.getElementById('roundsPerHour').value),
         heartbeatMinutes: Number(document.getElementById('heartbeatMinutes').value),
       });
-      const saved = document.getElementById('settingsSaved');
+      var saved = document.getElementById('settingsSaved');
       saved.classList.remove('hidden');
       setTimeout(() => saved.classList.add('hidden'), 2000);
     }
 
     async function refreshUsers() {
-      const users = await apiCall('users.list');
+      var users = await apiCall('users.list');
       document.getElementById('usersBody').innerHTML = users
         .map((u) => {
-          const delCell = u.id === session.user.id ? '' : '<button class="danger" onclick="deleteUser(\'' + u.id + '\')">Eliminar</button>';
+          var delCell = u.id === session.user.id ? '' : '<button class="danger" onclick="deleteUser(\'' + u.id + '\')">Eliminar</button>';
           return '<tr>' +
             '<td>' + u.name + '</td>' +
             '<td>' + u.username + '</td>' +
@@ -650,11 +650,11 @@
           'Inicia sesión como auxiliar para registrar el punto escaneado.';
       }
 
-      const saved = loadSession();
+      var saved = loadSession();
       if (saved && saved.token) {
         session = saved;
         try {
-          const data = await apiCall('me');
+          var data = await apiCall('me');
           session.user = data.user;
           saveSession();
           await enterAs(data.user);
@@ -668,7 +668,7 @@
 
     // Si por lo que sea getLocation no responde, arrancamos igualmente a los
     // 2 segundos para que la app nunca se quede colgada en blanco.
-    let __started = false;
+    var __started = false;
     function __startOnce(params) {
       if (__started) return;
       __started = true;
