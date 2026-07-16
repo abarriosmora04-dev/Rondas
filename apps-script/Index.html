@@ -231,7 +231,23 @@
     </div>
   </div>
 
+  <div id="jsErrorBanner" style="display:none; position:fixed; bottom:0; left:0; right:0; background:#7f1d1d; color:#fff; padding:12px; font-size:13px; z-index:9999; white-space:pre-wrap;"></div>
+
   <script>
+    // Red de seguridad: si algo revienta en JS, que se vea escrito en la
+    // pantalla en vez de quedarse en silencio (no hay forma de mirar la
+    // consola del navegador en remoto).
+    window.addEventListener('error', function (e) {
+      var el = document.getElementById('jsErrorBanner');
+      el.style.display = 'block';
+      el.textContent = 'Error JS: ' + e.message + ' (linea ' + e.lineno + ', ' + (e.filename || '') + ')';
+    });
+    window.addEventListener('unhandledrejection', function (e) {
+      var el = document.getElementById('jsErrorBanner');
+      el.style.display = 'block';
+      el.textContent = 'Promesa sin capturar: ' + ((e.reason && e.reason.message) || e.reason);
+    });
+
     // URL publica de este despliegue (inyectada por el servidor); se usa
     // para construir los QR de los puntos de control.
     const DEPLOY_URL = <?!= JSON.stringify(scriptUrl) ?>;
@@ -267,10 +283,26 @@
           reject(new Error('No se pudo conectar con el servidor de Apps Script.'));
           return;
         }
+        let settled = false;
+        const timer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          reject(new Error('El servidor no ha respondido en 25 segundos (accion: ' + action + ').'));
+        }, 25000);
         const payload = Object.assign({ action, token: session.token }, body || {});
         google.script.run
-          .withSuccessHandler((data) => resolve(data))
-          .withFailureHandler((err) => reject(new Error((err && err.message) || String(err))))
+          .withSuccessHandler((data) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            resolve(data);
+          })
+          .withFailureHandler((err) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            reject(new Error((err && err.message) || String(err)));
+          })
           .apiCall(payload);
       });
     }
