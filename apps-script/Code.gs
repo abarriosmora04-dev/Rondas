@@ -538,12 +538,18 @@ function seedSettingsIfEmpty_() {
 // =============================================================================
 
 function doGet(e) {
-  var template = HtmlService.createTemplateFromFile('Index');
-  template.scriptUrl = ScriptApp.getService().getUrl();
-  return template
-    .evaluate()
+  // Se sirve como HTML estatico (sin plantilla/scriptlets): asi no hay
+  // ningun procesado de plantilla que pueda romper el HTML si algo falla.
+  // La URL de despliegue (para construir los QR) se pide aparte desde el
+  // cliente, ver getDeployUrl_().
+  return HtmlService.createHtmlOutputFromFile('Index')
     .setTitle('Rondas')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1');
+}
+
+/** Invocable desde el cliente via google.script.run.getDeployUrl_(). */
+function getDeployUrl_() {
+  return ScriptApp.getService().getUrl();
 }
 
 /**
