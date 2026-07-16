@@ -259,7 +259,10 @@
     // Se usa solo para construir los QR de los puntos de control.
     let DEPLOY_URL = '';
     if (window.google && google.script && google.script.run) {
-      google.script.run.withSuccessHandler((url) => { DEPLOY_URL = url || ''; }).getDeployUrl_();
+      google.script.run
+        .withSuccessHandler((url) => { DEPLOY_URL = url || ''; })
+        .withFailureHandler((err) => { console.error('getDeployUrl_ fallo:', err); })
+        .getDeployUrl_();
     }
 
     // ---------------------------------------------------------------------
