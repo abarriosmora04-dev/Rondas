@@ -93,12 +93,12 @@
     <p class="muted" id="scanPendingNote" style="text-align:center;"></p>
   </div>
 
-  <!-- VIGILANTE -->
-  <div id="guardView" class="hidden">
+  <!-- AUXILIAR -->
+  <div id="auxiliarView" class="hidden">
     <div class="topbar">
       <strong>🔦 Rondas</strong>
       <div class="row">
-        <span class="muted" id="guardUserName"></span>
+        <span class="muted" id="auxiliarUserName"></span>
         <button class="secondary" onclick="logout()">Salir</button>
       </div>
     </div>
@@ -217,7 +217,7 @@
           <input type="text" id="uUsername" placeholder="Usuario" required style="flex:1;" autocapitalize="none" autocorrect="off" spellcheck="false" />
           <input type="password" id="uPassword" placeholder="Contraseña" required style="flex:1;" />
           <select id="uRole" style="flex:1;">
-            <option value="guard">Vigilante</option>
+            <option value="auxiliar">Auxiliar</option>
             <option value="supervisor">Supervisor</option>
           </select>
           <button type="submit">Crear</button>
@@ -243,7 +243,7 @@
     const SESSION_KEY = 'rondas_session';
     let session = { token: '', user: null };
     let pendingScanCode = null;
-    let guardPollTimer = null;
+    let auxiliarPollTimer = null;
     let supervisorPollTimer = null;
 
     function saveSession() {
@@ -286,22 +286,22 @@
     // ---------------------------------------------------------------------
     function showView(name) {
       document.getElementById('loginView').classList.toggle('hidden', name !== 'login');
-      document.getElementById('guardView').classList.toggle('hidden', name !== 'guard');
+      document.getElementById('auxiliarView').classList.toggle('hidden', name !== 'auxiliar');
       document.getElementById('supervisorView').classList.toggle('hidden', name !== 'supervisor');
     }
 
     function stopPolling() {
-      if (guardPollTimer) clearInterval(guardPollTimer);
+      if (auxiliarPollTimer) clearInterval(auxiliarPollTimer);
       if (supervisorPollTimer) clearInterval(supervisorPollTimer);
-      guardPollTimer = null;
+      auxiliarPollTimer = null;
       supervisorPollTimer = null;
     }
 
-    async function enterAsGuard() {
-      document.getElementById('guardUserName').textContent = session.user.name;
-      showView('guard');
-      await refreshGuardAll();
-      guardPollTimer = setInterval(refreshGuardAll, 15000);
+    async function enterAsAuxiliar() {
+      document.getElementById('auxiliarUserName').textContent = session.user.name;
+      showView('auxiliar');
+      await refreshAuxiliarAll();
+      auxiliarPollTimer = setInterval(refreshAuxiliarAll, 15000);
       if (pendingScanCode) {
         const code = pendingScanCode;
         pendingScanCode = null;
@@ -321,7 +321,7 @@
 
     async function enterAs(user) {
       if (user.role === 'supervisor') await enterAsSupervisor();
-      else await enterAsGuard();
+      else await enterAsAuxiliar();
     }
 
     // ---------------------------------------------------------------------
@@ -351,7 +351,7 @@
     });
 
     // ---------------------------------------------------------------------
-    // Panel del vigilante
+    // Panel del auxiliar
     // ---------------------------------------------------------------------
     async function registerScan(code) {
       const banner = document.getElementById('scanBanner');
@@ -360,7 +360,7 @@
       try {
         const data = await apiCall('scans.create', { code });
         banner.innerHTML = `<p class="success">✅ Registrado: <strong>${data.checkpoint.name}</strong> - ${new Date(data.timestamp).toLocaleTimeString('es-ES')}</p>`;
-        await refreshGuardAll();
+        await refreshAuxiliarAll();
       } catch (err) {
         banner.innerHTML = `<p class="error">⚠️ ${err.message}</p>`;
       }
@@ -373,7 +373,7 @@
       const startBtn = document.getElementById('startShiftBtn');
       const endBtn = document.getElementById('endShiftBtn');
       if (currentShift) {
-        statusEl.textContent = `Turno abierto desde las ${new Date(currentShift.startedAt).toLocaleTimeString('es-ES')} (${currentShift.guardName})`;
+        statusEl.textContent = `Turno abierto desde las ${new Date(currentShift.startedAt).toLocaleTimeString('es-ES')} (${currentShift.auxiliarName})`;
         startBtn.classList.add('hidden');
         endBtn.classList.remove('hidden');
       } else {
@@ -441,7 +441,7 @@
         .join('');
     }
 
-    async function refreshGuardAll() {
+    async function refreshAuxiliarAll() {
       try {
         await Promise.all([refreshShift(), refreshRound(), refreshHistory()]);
       } catch (e) { console.error(e); }
@@ -453,7 +453,7 @@
     async function refreshSupLive() {
       const [round, shift] = await Promise.all([apiCall('scans.currentRound'), apiCall('shifts.current')]);
       document.getElementById('supShiftStatus').textContent = shift
-        ? `Turno abierto: ${shift.guardName}, desde las ${new Date(shift.startedAt).toLocaleTimeString('es-ES')}`
+        ? `Turno abierto: ${shift.auxiliarName}, desde las ${new Date(shift.startedAt).toLocaleTimeString('es-ES')}`
         : 'No hay ningún turno abierto ahora mismo.';
       renderRound(round, document.getElementById('supRoundBadge'), document.getElementById('supRoundWindow'), document.getElementById('supChecklist'));
     }
@@ -551,7 +551,7 @@
         .map((u) => `<tr>
             <td>${u.name}</td>
             <td>${u.username}</td>
-            <td>${u.role === 'supervisor' ? 'Supervisor' : 'Vigilante'}</td>
+            <td>${u.role === 'supervisor' ? 'Supervisor' : 'Auxiliar'}</td>
             <td>${u.id === session.user.id ? '' : `<button class="danger" onclick="deleteUser('${u.id}')">Eliminar</button>`}</td>
           </tr>`)
         .join('');
@@ -591,7 +591,7 @@
       pendingScanCode = (urlParams && urlParams.code) || null;
       if (pendingScanCode) {
         document.getElementById('scanPendingNote').textContent =
-          'Inicia sesión como vigilante para registrar el punto escaneado.';
+          'Inicia sesión como auxiliar para registrar el punto escaneado.';
       }
 
       const saved = loadSession();

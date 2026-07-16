@@ -20,8 +20,8 @@
 var SHEETS_SCHEMA = {
   Users: ['id', 'name', 'username', 'passwordHash', 'salt', 'role', 'createdAt'],
   Checkpoints: ['id', 'name', 'code', 'active', 'order', 'createdAt'],
-  Scans: ['id', 'checkpointId', 'guardId', 'timestamp'],
-  Shifts: ['id', 'guardId', 'guardName', 'startedAt', 'endedAt'],
+  Scans: ['id', 'checkpointId', 'auxiliarId', 'timestamp'],
+  Shifts: ['id', 'auxiliarId', 'auxiliarName', 'startedAt', 'endedAt'],
   Alerts: ['id', 'type', 'message', 'meta', 'createdAt', 'acknowledged'],
   RoundsHistory: ['id', 'slotStart', 'slotEnd', 'status', 'scannedIds', 'missing'],
   Sessions: ['token', 'userId', 'createdAt', 'expiresAt'],
@@ -379,7 +379,7 @@ function checkHeartbeat_(now) {
       var msg =
         'Sin actividad desde hace ' +
         Math.round(minutesSinceLastScan) +
-        ' minutos. Posible ausencia del puesto o vigilante dormido. Ultimo registro: ' +
+        ' minutos. Posible ausencia del puesto o auxiliar dormido. Ultimo registro: ' +
         fmtTime_(lastScanTime) +
         '.';
       addAlert_('sin_actividad', msg, { minutesSinceLastScan: Math.round(minutesSinceLastScan) });
@@ -455,7 +455,7 @@ function setupTrigger() {
 // Apps Script (arriba, en el selector de funciones, elige "initSheets" y
 // pulsa "Ejecutar"; la primera vez pedira autorizar permisos, es normal).
 // Crea las pestanas que hacen falta con sus cabeceras, y si estan vacias
-// siembra el usuario supervisor y el vigilante inicial.
+// siembra el usuario supervisor y el auxiliar inicial.
 // =============================================================================
 
 function initSheets() {
@@ -486,7 +486,7 @@ function seedUsersIfEmpty_() {
   if (users.length > 0) return;
 
   var supSalt = Utilities.getUuid();
-  var guardSalt = Utilities.getUuid();
+  var auxiliarSalt = Utilities.getUuid();
 
   appendRow_('Users', {
     id: Utilities.getUuid(),
@@ -500,16 +500,16 @@ function seedUsersIfEmpty_() {
 
   appendRow_('Users', {
     id: Utilities.getUuid(),
-    name: 'Vigilante',
-    username: 'vigilante',
-    passwordHash: hashPassword_('cambia-esta-clave', guardSalt),
-    salt: guardSalt,
-    role: 'guard',
+    name: 'Auxiliar',
+    username: 'auxiliar',
+    passwordHash: hashPassword_('cambia-esta-clave', auxiliarSalt),
+    salt: auxiliarSalt,
+    role: 'auxiliar',
     createdAt: Date.now(),
   });
 
   Logger.log(
-    'Usuarios creados -> supervisor/cambia-esta-clave y vigilante/cambia-esta-clave. ' +
+    'Usuarios creados -> supervisor/cambia-esta-clave y auxiliar/cambia-esta-clave. ' +
       'CAMBIA ESTAS CONTRASENAS desde el panel de supervisor en cuanto entres.'
   );
 }
@@ -586,14 +586,14 @@ var ROUTES = {
   'checkpoints.delete': { auth: true, roles: ['supervisor'], handler: handleCheckpointsDelete_ },
 
   'scans.lookup': { auth: true, handler: handleScansLookup_ },
-  'scans.create': { auth: true, roles: ['guard'], handler: handleScansCreate_ },
+  'scans.create': { auth: true, roles: ['auxiliar'], handler: handleScansCreate_ },
   'scans.currentRound': { auth: true, handler: handleScansCurrentRound_ },
-  'scans.mine': { auth: true, roles: ['guard'], handler: handleScansMine_ },
+  'scans.mine': { auth: true, roles: ['auxiliar'], handler: handleScansMine_ },
 
   'shifts.current': { auth: true, handler: handleShiftsCurrent_ },
-  'shifts.start': { auth: true, roles: ['guard'], handler: handleShiftsStart_ },
-  'shifts.end': { auth: true, roles: ['guard'], handler: handleShiftsEnd_ },
-  'shifts.panic': { auth: true, roles: ['guard'], handler: handleShiftsPanic_ },
+  'shifts.start': { auth: true, roles: ['auxiliar'], handler: handleShiftsStart_ },
+  'shifts.end': { auth: true, roles: ['auxiliar'], handler: handleShiftsEnd_ },
+  'shifts.panic': { auth: true, roles: ['auxiliar'], handler: handleShiftsPanic_ },
   'shifts.history': { auth: true, roles: ['supervisor'], handler: handleShiftsHistory_ },
 
   'alerts.list': { auth: true, roles: ['supervisor'], handler: handleAlertsList_ },
@@ -672,7 +672,7 @@ function handleScansCreate_(params, user) {
   if (!cp.active) throw new Error('Este punto de control esta desactivado');
   var shift = getCurrentShift_();
   if (!shift) throw new Error('No tienes un turno abierto. Inicia turno antes de escanear.');
-  var scan = { id: Utilities.getUuid(), checkpointId: cp.id, guardId: user.id, timestamp: Date.now() };
+  var scan = { id: Utilities.getUuid(), checkpointId: cp.id, auxiliarId: user.id, timestamp: Date.now() };
   appendRow_('Scans', scan);
   return { checkpoint: { id: cp.id, name: cp.name }, timestamp: scan.timestamp };
 }
@@ -695,7 +695,7 @@ function handleScansCurrentRound_() {
 
 function handleScansMine_(params, user) {
   var scans = readAll_('Scans').filter(function (s) {
-    return s.guardId === user.id;
+    return s.auxiliarId === user.id;
   });
   scans.sort(function (a, b) {
     return b.timestamp - a.timestamp;
@@ -709,7 +709,7 @@ function handleScansMine_(params, user) {
     return {
       id: s.id,
       checkpointId: s.checkpointId,
-      guardId: s.guardId,
+      auxiliarId: s.auxiliarId,
       timestamp: s.timestamp,
       checkpointName: cp ? cp.name : '(eliminado)',
     };
@@ -726,8 +726,8 @@ function handleShiftsStart_(params, user) {
   if (getCurrentShift_()) throw new Error('Ya hay un turno abierto');
   var shift = {
     id: Utilities.getUuid(),
-    guardId: user.id,
-    guardName: user.name,
+    auxiliarId: user.id,
+    auxiliarName: user.name,
     startedAt: Date.now(),
     endedAt: '',
   };
@@ -745,7 +745,7 @@ function handleShiftsEnd_() {
 function handleShiftsPanic_(params, user) {
   var shift = getCurrentShift_();
   var msg = 'BOTON DE EMERGENCIA pulsado por ' + user.name + (shift ? '' : ' (sin turno abierto)') + '.';
-  addAlert_('panico', msg, { guardId: user.id });
+  addAlert_('panico', msg, { auxiliarId: user.id });
   sendAlertEmail_('EMERGENCIA - boton de panico activado', msg);
   return { ok: true };
 }
@@ -786,7 +786,7 @@ function handleUsersCreate_(params) {
   var username = params.username;
   var password = params.password;
   var role = params.role;
-  if (!name || !username || !password || ['guard', 'supervisor'].indexOf(role) === -1) {
+  if (!name || !username || !password || ['auxiliar', 'supervisor'].indexOf(role) === -1) {
     throw new Error('Faltan campos o el rol no es valido');
   }
   var existing = readAll_('Users');

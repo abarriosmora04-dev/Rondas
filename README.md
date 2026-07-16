@@ -1,6 +1,6 @@
 # Rondas
 
-Aplicación web para verificar que el vigilante de un puesto (garita + aparcamiento) realiza
+Aplicación web para verificar que el auxiliar de un puesto (garita + aparcamiento) realiza
 sus rondas periódicas y sigue activo, con alertas automáticas por email cuando algo falla.
 
 **Arquitectura: todo vive en Google Apps Script, un único despliegue.**
@@ -19,7 +19,7 @@ ninguna cuenta nueva: solo tu Google, que ya tienes.
 
 - El supervisor define **puntos de control** (checkpoints) físicos repartidos por el
   aparcamiento y la garita. Cada uno genera un código QR único para imprimir y pegar en su sitio.
-- El vigilante **inicia turno** desde su móvil al llegar y lo **termina** al acabar.
+- El auxiliar **inicia turno** desde su móvil al llegar y lo **termina** al acabar.
 - Con el turno abierto, cada vez que pasa por un punto escanea el QR con la **cámara nativa
   del móvil** (no hace falta abrir ninguna app: el QR lleva directamente a la web, que
   registra el paso automáticamente si ya tiene sesión iniciada).
@@ -27,9 +27,9 @@ ninguna cuenta nueva: solo tu Google, que ya tienes.
   (por defecto, 3 rondas/hora = un bloque de 20 minutos). Si un bloque termina sin que se
   hayan escaneado todos los puntos, se genera una alerta.
 - Además hay un **vigía de inactividad** (heartbeat): si pasan demasiados minutos sin ningún
-  escaneo (por defecto 12), se envía una alerta de "posible ausencia o vigilante dormido",
+  escaneo (por defecto 12), se envía una alerta de "posible ausencia o auxiliar dormido",
   incluso antes de que termine el bloque de la ronda.
-- Hay un **botón de pánico/SOS** en el panel del vigilante para emergencias reales.
+- Hay un **botón de pánico/SOS** en el panel del auxiliar para emergencias reales.
 - Todas las alertas (ronda incompleta, sin actividad, pánico) quedan registradas en la
   hoja de Google y se envían **por email**.
 
@@ -60,7 +60,7 @@ de escritorio"** para tener la barra de herramientas completa.
    script, es normal que Google avise así la primera vez). Esto crea las pestañas
    necesarias y dos usuarios de partida:
    - `supervisor` / `cambia-esta-clave`
-   - `vigilante` / `cambia-esta-clave`
+   - `auxiliar` / `cambia-esta-clave`
 
    **Cámbialas en cuanto entres** (panel de supervisor → Usuarios → crea las tuyas con tu
    contraseña y borra las de ejemplo).
@@ -95,9 +95,9 @@ mano la fila `alertEmailTo`.
 2. Pulsa "Ver QR" en cada uno, imprímelo y pégalo físicamente en su sitio.
 3. Ajusta en "Configuración de rondas" cuántas rondas por hora quieres exigir y a partir
    de cuántos minutos sin actividad quieres el aviso de "posible ausencia/sueño".
-4. Da de alta al vigilante (o usa la cuenta semilla) y comparte con él la URL de la
+4. Da de alta al auxiliar (o usa la cuenta semilla) y comparte con él la URL de la
    aplicación web para que inicie sesión en su móvil.
-5. El vigilante inicia turno, y a partir de ahí escanea los puntos con la cámara del móvil
+5. El auxiliar inicia turno, y a partir de ahí escanea los puntos con la cámara del móvil
    en cada ronda.
 
 ## Dónde viven los datos
