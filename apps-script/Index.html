@@ -77,18 +77,18 @@
     <h1>🔦 Rondas</h1>
     <p class="muted">Control de rondas de vigilancia</p>
     <div class="card">
-      <form id="loginForm" onsubmit="return false;">
+      <div id="loginForm">
         <div style="margin-bottom: 12px;">
           <label>Usuario</label>
           <input type="text" id="loginUsername" autocapitalize="none" autocorrect="off" spellcheck="false" required />
         </div>
         <div style="margin-bottom: 12px;">
           <label>Contraseña</label>
-          <input type="password" id="loginPassword" required />
+          <input type="password" id="loginPassword" required onkeydown="if (event.key === 'Enter') doLogin();" />
         </div>
         <p class="error hidden" id="loginError"></p>
-        <button type="submit" class="big" id="loginSubmit">Entrar</button>
-      </form>
+        <button type="button" class="big" id="loginSubmit" onclick="doLogin()">Entrar</button>
+      </div>
     </div>
     <p class="muted" id="scanPendingNote" style="text-align:center;"></p>
   </div>
@@ -181,10 +181,10 @@
 
       <div class="card">
         <h3>Puntos de control</h3>
-        <form id="cpForm" class="row" style="margin-bottom:12px;" onsubmit="return false;">
-          <input type="text" id="cpName" placeholder="Nombre del punto (ej. Entrada Norte)" required />
-          <button type="submit">Añadir</button>
-        </form>
+        <div class="row" style="margin-bottom:12px;">
+          <input type="text" id="cpName" placeholder="Nombre del punto (ej. Entrada Norte)" required onkeydown="if (event.key === 'Enter') doCreateCheckpoint();" />
+          <button type="button" onclick="doCreateCheckpoint()">Añadir</button>
+        </div>
         <table>
           <thead><tr><th>Nombre</th><th>Activo</th><th>QR</th><th></th></tr></thead>
           <tbody id="checkpointsBody"></tbody>
@@ -194,7 +194,7 @@
 
       <div class="card">
         <h3>Configuración de rondas</h3>
-        <form id="settingsForm" onsubmit="return false;">
+        <div>
           <div class="row">
             <div style="flex:1;">
               <label>Rondas por hora</label>
@@ -205,14 +205,14 @@
               <input type="number" id="heartbeatMinutes" min="1" required />
             </div>
           </div>
-          <button type="submit" style="margin-top:12px;">Guardar</button>
+          <button type="button" style="margin-top:12px;" onclick="doSaveSettings()">Guardar</button>
           <span class="success hidden" id="settingsSaved">Guardado</span>
-        </form>
+        </div>
       </div>
 
       <div class="card">
         <h3>Usuarios</h3>
-        <form id="userForm" class="row" style="margin-bottom:12px;" onsubmit="return false;">
+        <div class="row" style="margin-bottom:12px;">
           <input type="text" id="uName" placeholder="Nombre" required style="flex:1;" />
           <input type="text" id="uUsername" placeholder="Usuario" required style="flex:1;" autocapitalize="none" autocorrect="off" spellcheck="false" />
           <input type="password" id="uPassword" placeholder="Contraseña" required style="flex:1;" />
@@ -220,8 +220,8 @@
             <option value="auxiliar">Auxiliar</option>
             <option value="supervisor">Supervisor</option>
           </select>
-          <button type="submit">Crear</button>
-        </form>
+          <button type="button" onclick="doCreateUser()">Crear</button>
+        </div>
         <table>
           <thead><tr><th>Nombre</th><th>Usuario</th><th>Rol</th><th></th></tr></thead>
           <tbody id="usersBody"></tbody>
@@ -364,13 +364,17 @@
     // ---------------------------------------------------------------------
     // Login
     // ---------------------------------------------------------------------
-    document.getElementById('loginForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
+    async function doLogin() {
       const username = document.getElementById('loginUsername').value.trim();
       const password = document.getElementById('loginPassword').value;
       const errEl = document.getElementById('loginError');
       const submitBtn = document.getElementById('loginSubmit');
       errEl.classList.add('hidden');
+      if (!username || !password) {
+        errEl.textContent = 'Usuario y contraseña son obligatorios';
+        errEl.classList.remove('hidden');
+        return;
+      }
       submitBtn.disabled = true;
       submitBtn.textContent = 'Entrando...';
       try {
@@ -385,7 +389,7 @@
         submitBtn.disabled = false;
         submitBtn.textContent = 'Entrar';
       }
-    });
+    }
 
     // ---------------------------------------------------------------------
     // Panel del auxiliar
@@ -556,14 +560,13 @@
       refreshCheckpoints();
     }
 
-    document.getElementById('cpForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
+    async function doCreateCheckpoint() {
       const name = document.getElementById('cpName').value.trim();
       if (!name) return;
       await apiCall('checkpoints.create', { name });
       document.getElementById('cpName').value = '';
       refreshCheckpoints();
-    });
+    }
 
     async function refreshSettings() {
       const s = await apiCall('rounds.settingsGet');
@@ -571,8 +574,7 @@
       document.getElementById('heartbeatMinutes').value = s.heartbeatMinutes;
     }
 
-    document.getElementById('settingsForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
+    async function doSaveSettings() {
       await apiCall('rounds.settingsUpdate', {
         roundsPerHour: Number(document.getElementById('roundsPerHour').value),
         heartbeatMinutes: Number(document.getElementById('heartbeatMinutes').value),
@@ -580,7 +582,7 @@
       const saved = document.getElementById('settingsSaved');
       saved.classList.remove('hidden');
       setTimeout(() => saved.classList.add('hidden'), 2000);
-    });
+    }
 
     async function refreshUsers() {
       const users = await apiCall('users.list');
@@ -600,8 +602,7 @@
       refreshUsers();
     }
 
-    document.getElementById('userForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
+    async function doCreateUser() {
       try {
         await apiCall('users.create', {
           name: document.getElementById('uName').value.trim(),
@@ -609,10 +610,12 @@
           password: document.getElementById('uPassword').value,
           role: document.getElementById('uRole').value,
         });
-        e.target.reset();
+        document.getElementById('uName').value = '';
+        document.getElementById('uUsername').value = '';
+        document.getElementById('uPassword').value = '';
         refreshUsers();
       } catch (err) { alert(err.message); }
-    });
+    }
 
     async function refreshSupervisorAll() {
       try {
