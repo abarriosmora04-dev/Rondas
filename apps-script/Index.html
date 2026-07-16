@@ -71,6 +71,11 @@
   </style>
 </head>
 <body>
+  <div id="diagBadge" style="position:fixed; top:0; right:0; background:#000; color:#0f0; font:12px monospace; padding:4px 8px; z-index:99999;">esperando A...</div>
+  <script>
+    document.title = 'A-OK ' + document.title;
+    document.getElementById('diagBadge').textContent = 'A-OK, esperando B...';
+  </script>
 
   <!-- LOGIN -->
   <div id="loginView" class="wrap" style="padding-top: 60px;">
@@ -664,6 +669,10 @@
       __startOnce({});
     }
     setTimeout(() => __startOnce({}), 2000);
+  </script>
+  <script>
+    document.title = 'B-OK ' + document.title;
+    document.getElementById('diagBadge').textContent = 'A-OK y B-OK (typeof doLogin=' + typeof doLogin + ')';
   </script>
 </body>
 </html>
