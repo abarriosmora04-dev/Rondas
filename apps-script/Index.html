@@ -77,7 +77,7 @@
     <h1>🔦 Rondas</h1>
     <p class="muted">Control de rondas de vigilancia</p>
     <div class="card">
-      <form id="loginForm">
+      <form id="loginForm" onsubmit="return false;">
         <div style="margin-bottom: 12px;">
           <label>Usuario</label>
           <input type="text" id="loginUsername" autocapitalize="none" autocorrect="off" spellcheck="false" required />
@@ -181,7 +181,7 @@
 
       <div class="card">
         <h3>Puntos de control</h3>
-        <form id="cpForm" class="row" style="margin-bottom:12px;">
+        <form id="cpForm" class="row" style="margin-bottom:12px;" onsubmit="return false;">
           <input type="text" id="cpName" placeholder="Nombre del punto (ej. Entrada Norte)" required />
           <button type="submit">Añadir</button>
         </form>
@@ -194,7 +194,7 @@
 
       <div class="card">
         <h3>Configuración de rondas</h3>
-        <form id="settingsForm">
+        <form id="settingsForm" onsubmit="return false;">
           <div class="row">
             <div style="flex:1;">
               <label>Rondas por hora</label>
@@ -212,7 +212,7 @@
 
       <div class="card">
         <h3>Usuarios</h3>
-        <form id="userForm" class="row" style="margin-bottom:12px;">
+        <form id="userForm" class="row" style="margin-bottom:12px;" onsubmit="return false;">
           <input type="text" id="uName" placeholder="Nombre" required style="flex:1;" />
           <input type="text" id="uUsername" placeholder="Usuario" required style="flex:1;" autocapitalize="none" autocorrect="off" spellcheck="false" />
           <input type="password" id="uPassword" placeholder="Contraseña" required style="flex:1;" />
@@ -610,11 +610,20 @@
       showView('login');
     }
 
-    if (window.google && google.script && google.script.url && google.script.url.getLocation) {
-      google.script.url.getLocation((loc) => init(loc.parameter));
-    } else {
-      init({});
+    // Si por lo que sea getLocation no responde, arrancamos igualmente a los
+    // 2 segundos para que la app nunca se quede colgada en blanco.
+    let __started = false;
+    function __startOnce(params) {
+      if (__started) return;
+      __started = true;
+      init(params || {});
     }
+    if (window.google && google.script && google.script.url && google.script.url.getLocation) {
+      google.script.url.getLocation((loc) => __startOnce(loc.parameter));
+    } else {
+      __startOnce({});
+    }
+    setTimeout(() => __startOnce({}), 2000);
   </script>
 </body>
 </html>
