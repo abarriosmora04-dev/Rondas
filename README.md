@@ -20,9 +20,13 @@ ninguna cuenta nueva: solo tu Google, que ya tienes.
 - El supervisor define **puntos de control** (checkpoints) físicos repartidos por el
   aparcamiento y la garita. Cada uno genera un código QR único para imprimir y pegar en su sitio.
 - El auxiliar **inicia turno** desde su móvil al llegar y lo **termina** al acabar.
-- Con el turno abierto, cada vez que pasa por un punto escanea el QR con la **cámara nativa
-  del móvil** (no hace falta abrir ninguna app: el QR lleva directamente a la web, que
-  registra el paso automáticamente si ya tiene sesión iniciada).
+- Con el turno abierto, cada vez que pasa por un punto pulsa **"📷 Escanear punto"** dentro
+  de la propia app: se abre la cámara del móvil (pide permiso la primera vez) y en cuanto
+  reconoce el QR, registra el paso automáticamente. Todo ocurre dentro de la app, sin
+  depender de la cámara nativa del sistema ni de abrir ningún enlace.
+- El supervisor tiene un botón parecido, **"📷 Verificar QR"**, junto a "Puntos de control":
+  sirve para comprobar a qué punto corresponde un código ya impreso, sin que cuente como
+  ronda realizada (útil al colocar o revisar los QR físicos).
 - El sistema exige completar **todos los puntos de control dentro de cada bloque horario**
   (por defecto, 3 rondas/hora = un bloque de 20 minutos). Si un bloque termina sin que se
   hayan escaneado todos los puntos, se genera una alerta.
@@ -32,6 +36,10 @@ ninguna cuenta nueva: solo tu Google, que ya tienes.
 - Hay un **botón de pánico/SOS** en el panel del auxiliar para emergencias reales.
 - Todas las alertas (ronda incompleta, sin actividad, pánico) quedan registradas en la
   hoja de Google y se envían **por email**.
+- El panel de supervisor tiene un **historial de rondas filtrable** (por turno/auxiliar,
+  fecha/hora y estado), con un resumen y un gráfico de rondas completas/incompletas, una
+  tabla de **todos los escaneos**, y un botón para **descargar el historial filtrado en
+  PDF**.
 
 ## Puesta en marcha (todo desde el navegador — Safari en iPad funciona bien)
 
@@ -87,6 +95,27 @@ Las alertas por email llegan, por defecto, a la cuenta de Google dueña del scri
 quieres cambiar el destinatario, abre la pestaña **Settings** de la Google Sheet y edita a
 mano la fila `alertEmailTo`.
 
+## Actualizar una instalación que ya tenías funcionando
+
+Si ya tenías la app desplegada y solo quieres traer una actualización de código (por
+ejemplo, el escáner de cámara o el historial con filtros/PDF):
+
+1. Repite los pasos 3 y 4 de más arriba: copia `Code.gs` e `Index.html` desde GitHub
+   ("Copy raw file") y pégalos sobre los ficheros existentes en el editor de Apps Script,
+   sustituyendo todo el contenido.
+2. En el desplegable de funciones, elige **`initSheets`** y pulsa ▶ Ejecutar **una vez
+   más**. Es seguro repetirlo: no borra datos ni usuarios existentes, solo añade a la hoja
+   `RoundsHistory` las columnas nuevas (`auxiliarId`, `auxiliarName`) que hacen falta para
+   poder filtrar el historial por auxiliar/turno.
+3. Vuelve a desplegar: **Implementar → Gestionar implementaciones → editar (icono de
+   lápiz) → Nueva versión** (no "Nueva implementación", para no cambiar la URL).
+4. La primera vez que uses **"Descargar PDF"** (o la primera vez que ejecutes algo tras
+   este cambio), Google puede pedirte autorizar permisos nuevos, porque el PDF se genera
+   creando un documento de Google temporal — acepta el aviso igual que la primera vez.
+5. El escaneo por cámara pedirá permiso de cámara al móvil la primera vez que se use. Si el
+   navegador lo bloquea, la app lo indica con un mensaje claro dentro del propio escáner:
+   revisa que esta página tenga permiso de cámara en los ajustes del navegador.
+
 ## Primeros pasos ya dentro de la app
 
 1. Como supervisor: crea los puntos de control (p.ej. "Entrada", "Zona A", "Zona B",
@@ -97,8 +126,8 @@ mano la fila `alertEmailTo`.
    de cuántos minutos sin actividad quieres el aviso de "posible ausencia/sueño".
 4. Da de alta al auxiliar (o usa la cuenta semilla) y comparte con él la URL de la
    aplicación web para que inicie sesión en su móvil.
-5. El auxiliar inicia turno, y a partir de ahí escanea los puntos con la cámara del móvil
-   en cada ronda.
+5. El auxiliar inicia turno, y a partir de ahí pulsa "📷 Escanear punto" en cada ronda y
+   apunta con la cámara al QR correspondiente.
 
 ## Dónde viven los datos
 

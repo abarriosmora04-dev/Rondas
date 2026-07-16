@@ -23,7 +23,7 @@ var SHEETS_SCHEMA = {
   Scans: ['id', 'checkpointId', 'auxiliarId', 'timestamp'],
   Shifts: ['id', 'auxiliarId', 'auxiliarName', 'startedAt', 'endedAt'],
   Alerts: ['id', 'type', 'message', 'meta', 'createdAt', 'acknowledged'],
-  RoundsHistory: ['id', 'slotStart', 'slotEnd', 'status', 'scannedIds', 'missing'],
+  RoundsHistory: ['id', 'slotStart', 'slotEnd', 'status', 'scannedIds', 'missing', 'auxiliarId', 'auxiliarName'],
   Sessions: ['token', 'userId', 'createdAt', 'expiresAt'],
   Settings: ['key', 'value'],
 };
@@ -314,7 +314,14 @@ function fmtTime_(ts) {
   return Utilities.formatDate(new Date(ts), Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm');
 }
 
-function processMissedSlot_(slotStart, slotEnd) {
+var statusLabels_ = {
+  completa: 'Completa',
+  incompleta: 'Incompleta',
+  no_iniciada: 'No iniciada',
+  sin_configurar: 'Sin puntos configurados',
+};
+
+function processMissedSlot_(slotStart, slotEnd, shift) {
   var result = getRoundStatus_(slotStart, slotEnd);
   appendRow_('RoundsHistory', {
     id: Utilities.getUuid(),
@@ -327,6 +334,8 @@ function processMissedSlot_(slotStart, slotEnd) {
         return c.id;
       })
     ),
+    auxiliarId: shift ? shift.auxiliarId : '',
+    auxiliarName: shift ? shift.auxiliarName : '',
   });
 
   if (result.status === 'sin_configurar') return;
@@ -427,7 +436,7 @@ function checkRoundsAndHeartbeat() {
       } else if (Number(lastChecked) !== slot.slotStart) {
         var prevSlotStart = Number(lastChecked);
         var prevSlotEnd = prevSlotStart + interval * 60000;
-        processMissedSlot_(prevSlotStart, prevSlotEnd);
+        processMissedSlot_(prevSlotStart, prevSlotEnd, shift);
         setSetting_('lastCheckedSlotStart', slot.slotStart);
       }
       checkHeartbeat_(now);
@@ -540,16 +549,9 @@ function seedSettingsIfEmpty_() {
 function doGet(e) {
   // Se sirve como HTML estatico (sin plantilla/scriptlets): asi no hay
   // ningun procesado de plantilla que pueda romper el HTML si algo falla.
-  // La URL de despliegue (para construir los QR) se pide aparte desde el
-  // cliente, ver getDeployUrl_().
   return HtmlService.createHtmlOutputFromFile('Index')
     .setTitle('Rondas')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1');
-}
-
-/** Invocable desde el cliente via google.script.run.getDeployUrl_(). */
-function getDeployUrl_() {
-  return ScriptApp.getService().getUrl();
 }
 
 /**
@@ -610,8 +612,11 @@ var ROUTES = {
   'users.delete': { auth: true, roles: ['supervisor'], handler: handleUsersDelete_ },
 
   'rounds.history': { auth: true, roles: ['supervisor'], handler: handleRoundsHistory_ },
+  'rounds.exportPdf': { auth: true, roles: ['supervisor'], handler: handleRoundsExportPdf_ },
   'rounds.settingsGet': { auth: true, handler: handleRoundsSettingsGet_ },
   'rounds.settingsUpdate': { auth: true, roles: ['supervisor'], handler: handleRoundsSettingsUpdate_ },
+
+  'scans.list': { auth: true, roles: ['supervisor'], handler: handleScansList_ },
 };
 
 // --- Puntos de control ---
@@ -722,6 +727,37 @@ function handleScansMine_(params, user) {
   });
 }
 
+function handleScansList_(params) {
+  params = params || {};
+  var from = params.from !== undefined && params.from !== '' ? Number(params.from) : null;
+  var to = params.to !== undefined && params.to !== '' ? Number(params.to) : null;
+  var scans = readAll_('Scans').filter(function (s) {
+    if (from !== null && s.timestamp < from) return false;
+    if (to !== null && s.timestamp > to) return false;
+    return true;
+  });
+  scans.sort(function (a, b) {
+    return b.timestamp - a.timestamp;
+  });
+  scans = scans.slice(0, 300);
+  var checkpoints = readAll_('Checkpoints');
+  var users = readAll_('Users');
+  return scans.map(function (s) {
+    var cp = checkpoints.filter(function (c) {
+      return c.id === s.checkpointId;
+    })[0];
+    var u = users.filter(function (x) {
+      return x.id === s.auxiliarId;
+    })[0];
+    return {
+      id: s.id,
+      timestamp: s.timestamp,
+      checkpointName: cp ? cp.name : '(eliminado)',
+      auxiliarName: u ? u.name : '(eliminado)',
+    };
+  });
+}
+
 // --- Turnos ---
 
 function handleShiftsCurrent_() {
@@ -766,8 +802,17 @@ function handleShiftsHistory_() {
 
 // --- Alertas ---
 
-function handleAlertsList_() {
-  var alerts = readAll_('Alerts');
+function handleAlertsList_(params) {
+  params = params || {};
+  var from = params.from !== undefined && params.from !== '' ? Number(params.from) : null;
+  var to = params.to !== undefined && params.to !== '' ? Number(params.to) : null;
+  var type = params.type;
+  var alerts = readAll_('Alerts').filter(function (a) {
+    if (from !== null && a.createdAt < from) return false;
+    if (to !== null && a.createdAt > to) return false;
+    if (type && a.type !== type) return false;
+    return true;
+  });
   alerts.sort(function (a, b) {
     return b.createdAt - a.createdAt;
   });
@@ -824,12 +869,113 @@ function handleUsersDelete_(params, user) {
 
 // --- Historial de rondas y ajustes ---
 
-function handleRoundsHistory_() {
-  var rows = readAll_('RoundsHistory');
+function filterRoundsHistory_(params) {
+  params = params || {};
+  var from = params.from !== undefined && params.from !== '' ? Number(params.from) : null;
+  var to = params.to !== undefined && params.to !== '' ? Number(params.to) : null;
+  var status = params.status;
+  var auxiliarId = params.auxiliarId;
+  var rows = readAll_('RoundsHistory').filter(function (r) {
+    if (from !== null && r.slotStart < from) return false;
+    if (to !== null && r.slotStart > to) return false;
+    if (status && r.status !== status) return false;
+    if (auxiliarId && r.auxiliarId !== auxiliarId) return false;
+    return true;
+  });
   rows.sort(function (a, b) {
     return b.slotStart - a.slotStart;
   });
-  return rows.slice(0, 200);
+  return rows;
+}
+
+function handleRoundsHistory_(params) {
+  return filterRoundsHistory_(params).slice(0, 500);
+}
+
+function handleRoundsExportPdf_(params) {
+  var rows = filterRoundsHistory_(params).slice(0, 1000);
+  var total = rows.length;
+  var counts = { completa: 0, incompleta: 0, no_iniciada: 0, sin_configurar: 0 };
+  rows.forEach(function (r) {
+    counts[r.status] = (counts[r.status] || 0) + 1;
+  });
+  var pct = function (n) {
+    return total ? Math.round((n / total) * 100) : 0;
+  };
+
+  var doc = DocumentApp.create(
+    'Rondas - historial ' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HHmm')
+  );
+  var body = doc.getBody();
+  body.appendParagraph('Historial de rondas').setHeading(DocumentApp.ParagraphHeading.HEADING1);
+  body.appendParagraph('Generado el ' + fmtTime_(Date.now()));
+
+  var filterDesc = [];
+  if (params && params.from) filterDesc.push('Desde: ' + fmtTime_(Number(params.from)));
+  if (params && params.to) filterDesc.push('Hasta: ' + fmtTime_(Number(params.to)));
+  if (params && params.status) filterDesc.push('Estado: ' + (statusLabels_[params.status] || params.status));
+  if (params && params.auxiliarId) {
+    var auxUser = readAll_('Users').filter(function (u) {
+      return u.id === params.auxiliarId;
+    })[0];
+    filterDesc.push('Auxiliar: ' + (auxUser ? auxUser.name : params.auxiliarId));
+  }
+  body.appendParagraph(filterDesc.length ? 'Filtros: ' + filterDesc.join(' | ') : 'Sin filtros aplicados.');
+
+  body.appendParagraph(
+    'Total: ' +
+      total +
+      ' rondas | Completas: ' +
+      counts.completa +
+      ' (' +
+      pct(counts.completa) +
+      '%) | Incompletas: ' +
+      counts.incompleta +
+      ' (' +
+      pct(counts.incompleta) +
+      '%) | No iniciadas: ' +
+      counts.no_iniciada +
+      ' (' +
+      pct(counts.no_iniciada) +
+      '%)'
+  );
+
+  var checkpoints = readAll_('Checkpoints');
+  var cpName = function (id) {
+    var c = checkpoints.filter(function (x) {
+      return x.id === id;
+    })[0];
+    return c ? c.name : '(eliminado)';
+  };
+
+  var tableData = [['Fecha', 'Ventana', 'Estado', 'Auxiliar', 'Puntos no visitados']];
+  rows.forEach(function (r) {
+    var missingIds = [];
+    try {
+      missingIds = JSON.parse(r.missing || '[]');
+    } catch (e) {
+      missingIds = [];
+    }
+    var missingNames = missingIds.map(cpName).join(', ');
+    tableData.push([
+      fmtTime_(r.slotStart),
+      Utilities.formatDate(new Date(r.slotStart), Session.getScriptTimeZone(), 'HH:mm') +
+        ' - ' +
+        Utilities.formatDate(new Date(r.slotEnd), Session.getScriptTimeZone(), 'HH:mm'),
+      statusLabels_[r.status] || r.status,
+      r.auxiliarName || '-',
+      missingNames || '-',
+    ]);
+  });
+  body.appendTable(tableData);
+
+  doc.saveAndClose();
+  var docFile = DriveApp.getFileById(doc.getId());
+  var pdfBlob = docFile.getAs(MimeType.PDF);
+  var base64 = Utilities.base64Encode(pdfBlob.getBytes());
+  var filename = 'rondas_' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd_HHmm') + '.pdf';
+  docFile.setTrashed(true);
+  return { base64: base64, filename: filename };
 }
 
 function handleRoundsSettingsGet_() {
