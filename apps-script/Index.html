@@ -253,27 +253,37 @@
       el.textContent = 'Promesa sin capturar: ' + ((e.reason && e.reason.message) || e.reason);
     });
 
-    // URL publica de este despliegue; se pide al servidor de forma
-    // asincrona (en vez de por plantilla) para que la pagina sea HTML
-    // estatico normal y ningun fallo aqui pueda romper el resto del script.
-    // Se usa solo para construir los QR de los puntos de control.
-    var DEPLOY_URL = '';
-    if (window.google && google.script && google.script.run) {
-      google.script.run
-        .withSuccessHandler((url) => { DEPLOY_URL = url || ''; })
-        .withFailureHandler((err) => { console.error('getDeployUrl_ fallo:', err); })
-        .getDeployUrl_();
-    }
-
     // ---------------------------------------------------------------------
     // Sesion y llamadas al backend via google.script.run (mismo origen,
     // sin CORS posible porque no hay ninguna peticion HTTP entre dominios).
+    // Esto va lo primero de todo, antes de cualquier otra cosa que pueda
+    // fallar, para que "session" quede siempre definida pase lo que pase.
     // ---------------------------------------------------------------------
     var SESSION_KEY = 'rondas_session';
     var session = { token: '', user: null };
     var pendingScanCode = null;
     var auxiliarPollTimer = null;
     var supervisorPollTimer = null;
+
+    // URL publica de este despliegue; se pide al servidor de forma
+    // asincrona (en vez de por plantilla) para que la pagina sea HTML
+    // estatico normal. Envuelta en try/catch: si esta llamada falla (por
+    // ejemplo porque el Code.gs desplegado esta desactualizado y no tiene
+    // getDeployUrl_ todavia), NUNCA debe cortar la ejecucion del resto del
+    // script - como mucho se quedan sin construir los QR.
+    var DEPLOY_URL = '';
+    try {
+      if (window.google && google.script && google.script.run && typeof google.script.run.getDeployUrl_ === 'function') {
+        google.script.run
+          .withSuccessHandler((url) => { DEPLOY_URL = url || ''; })
+          .withFailureHandler((err) => { console.error('getDeployUrl_ fallo:', err); })
+          .getDeployUrl_();
+      } else {
+        console.error('getDeployUrl_ no esta disponible en el servidor todavia.');
+      }
+    } catch (e) {
+      console.error('Error pidiendo getDeployUrl_:', e);
+    }
 
     function saveSession() {
       try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)); } catch (e) {}
