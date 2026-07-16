@@ -405,10 +405,10 @@
       banner.innerHTML = '<p>Registrando punto de control...</p>';
       try {
         const data = await apiCall('scans.create', { code });
-        banner.innerHTML = `<p class="success">✅ Registrado: <strong>${data.checkpoint.name}</strong> - ${new Date(data.timestamp).toLocaleTimeString('es-ES')}</p>`;
+        banner.innerHTML = '<p class="success">✅ Registrado: <strong>' + data.checkpoint.name + '</strong> - ' + new Date(data.timestamp).toLocaleTimeString('es-ES') + '</p>';
         await refreshAuxiliarAll();
       } catch (err) {
-        banner.innerHTML = `<p class="error">⚠️ ${err.message}</p>`;
+        banner.innerHTML = '<p class="error">⚠️ ' + err.message + '</p>';
       }
       setTimeout(() => banner.classList.add('hidden'), 8000);
     }
@@ -419,7 +419,7 @@
       const startBtn = document.getElementById('startShiftBtn');
       const endBtn = document.getElementById('endShiftBtn');
       if (currentShift) {
-        statusEl.textContent = `Turno abierto desde las ${new Date(currentShift.startedAt).toLocaleTimeString('es-ES')} (${currentShift.auxiliarName})`;
+        statusEl.textContent = 'Turno abierto desde las ' + new Date(currentShift.startedAt).toLocaleTimeString('es-ES') + ' (' + currentShift.auxiliarName + ')';
         startBtn.classList.add('hidden');
         endBtn.classList.remove('hidden');
       } else {
@@ -466,13 +466,13 @@
 
     function renderRound(data, badgeEl, windowEl, listEl) {
       badgeEl.textContent = statusLabels[data.status] || data.status;
-      badgeEl.className = `badge ${data.status}`;
+      badgeEl.className = 'badge ' + data.status;
       const start = new Date(data.slotStart).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
       const end = new Date(data.slotEnd).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-      windowEl.textContent = `Ventana de ${start} a ${end}`;
+      windowEl.textContent = 'Ventana de ' + start + ' a ' + end;
       listEl.innerHTML = data.checkpoints.length === 0
         ? '<li class="muted">El supervisor todavía no ha configurado puntos de control.</li>'
-        : data.checkpoints.map((c) => `<li><span class="dot ${c.scanned ? 'done' : 'pending'}"></span> ${c.name}</li>`).join('');
+        : data.checkpoints.map((c) => '<li><span class="dot ' + (c.scanned ? 'done' : 'pending') + '"></span> ' + c.name + '</li>').join('');
     }
 
     async function refreshRound() {
@@ -483,7 +483,7 @@
     async function refreshHistory() {
       const rows = await apiCall('scans.mine');
       document.getElementById('historyBody').innerHTML = rows
-        .map((r) => `<tr><td>${new Date(r.timestamp).toLocaleString('es-ES')}</td><td>${r.checkpointName}</td></tr>`)
+        .map((r) => '<tr><td>' + new Date(r.timestamp).toLocaleString('es-ES') + '</td><td>' + r.checkpointName + '</td></tr>')
         .join('');
     }
 
@@ -499,7 +499,7 @@
     async function refreshSupLive() {
       const [round, shift] = await Promise.all([apiCall('scans.currentRound'), apiCall('shifts.current')]);
       document.getElementById('supShiftStatus').textContent = shift
-        ? `Turno abierto: ${shift.auxiliarName}, desde las ${new Date(shift.startedAt).toLocaleTimeString('es-ES')}`
+        ? 'Turno abierto: ' + shift.auxiliarName + ', desde las ' + new Date(shift.startedAt).toLocaleTimeString('es-ES')
         : 'No hay ningún turno abierto ahora mismo.';
       renderRound(round, document.getElementById('supRoundBadge'), document.getElementById('supRoundWindow'), document.getElementById('supChecklist'));
     }
@@ -508,12 +508,15 @@
       const alerts = await apiCall('alerts.list');
       document.getElementById('alertsBody').innerHTML = alerts
         .slice(0, 30)
-        .map((a) => `<tr>
-            <td>${new Date(a.createdAt).toLocaleString('es-ES')}</td>
-            <td><span class="badge ${a.type}">${alertLabels[a.type] || a.type}</span></td>
-            <td>${a.message}</td>
-            <td>${a.acknowledged ? '✔️' : `<button class="secondary" onclick="ackAlert('${a.id}')">Marcar visto</button>`}</td>
-          </tr>`)
+        .map((a) => {
+          const ackCell = a.acknowledged ? '✔️' : '<button class="secondary" onclick="ackAlert(\'' + a.id + '\')">Marcar visto</button>';
+          return '<tr>' +
+            '<td>' + new Date(a.createdAt).toLocaleString('es-ES') + '</td>' +
+            '<td><span class="badge ' + a.type + '">' + (alertLabels[a.type] || a.type) + '</span></td>' +
+            '<td>' + a.message + '</td>' +
+            '<td>' + ackCell + '</td>' +
+            '</tr>';
+        })
         .join('');
     }
 
@@ -529,7 +532,7 @@
         .map((r) => {
           const start = new Date(r.slotStart).toLocaleString('es-ES');
           const end = new Date(r.slotEnd).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-          return `<tr><td>${start} - ${end}</td><td><span class="badge ${r.status}">${statusLabels[r.status] || r.status}</span></td></tr>`;
+          return '<tr><td>' + start + ' - ' + end + '</td><td><span class="badge ' + r.status + '">' + (statusLabels[r.status] || r.status) + '</span></td></tr>';
         })
         .join('');
     }
@@ -542,15 +545,17 @@
     async function refreshCheckpoints() {
       const cps = await apiCall('checkpoints.list');
       document.getElementById('checkpointsBody').innerHTML = cps
-        .map((c) => `<tr>
-            <td>${c.name}</td>
-            <td>${c.active ? '✔️' : '❌'}</td>
-            <td><a href="${qrImageUrl(c.code)}" target="_blank" rel="noopener">Ver QR</a></td>
-            <td class="row">
-              <button class="secondary" onclick="toggleCheckpoint('${c.id}', ${!c.active})">${c.active ? 'Desactivar' : 'Activar'}</button>
-              <button class="danger" onclick="deleteCheckpoint('${c.id}')">Eliminar</button>
-            </td>
-          </tr>`)
+        .map((c) => {
+          return '<tr>' +
+            '<td>' + c.name + '</td>' +
+            '<td>' + (c.active ? '✔️' : '❌') + '</td>' +
+            '<td><a href="' + qrImageUrl(c.code) + '" target="_blank" rel="noopener">Ver QR</a></td>' +
+            '<td class="row">' +
+              '<button class="secondary" onclick="toggleCheckpoint(\'' + c.id + '\', ' + (!c.active) + ')">' + (c.active ? 'Desactivar' : 'Activar') + '</button>' +
+              '<button class="danger" onclick="deleteCheckpoint(\'' + c.id + '\')">Eliminar</button>' +
+            '</td>' +
+            '</tr>';
+        })
         .join('');
     }
 
@@ -592,12 +597,15 @@
     async function refreshUsers() {
       const users = await apiCall('users.list');
       document.getElementById('usersBody').innerHTML = users
-        .map((u) => `<tr>
-            <td>${u.name}</td>
-            <td>${u.username}</td>
-            <td>${u.role === 'supervisor' ? 'Supervisor' : 'Auxiliar'}</td>
-            <td>${u.id === session.user.id ? '' : `<button class="danger" onclick="deleteUser('${u.id}')">Eliminar</button>`}</td>
-          </tr>`)
+        .map((u) => {
+          const delCell = u.id === session.user.id ? '' : '<button class="danger" onclick="deleteUser(\'' + u.id + '\')">Eliminar</button>';
+          return '<tr>' +
+            '<td>' + u.name + '</td>' +
+            '<td>' + u.username + '</td>' +
+            '<td>' + (u.role === 'supervisor' ? 'Supervisor' : 'Auxiliar') + '</td>' +
+            '<td>' + delCell + '</td>' +
+            '</tr>';
+        })
         .join('');
     }
 
