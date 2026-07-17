@@ -893,6 +893,36 @@ function handleRoundsHistory_(params) {
 }
 
 function handleRoundsExportPdf_(params) {
+  try {
+    return buildRoundsPdf_(params);
+  } catch (err) {
+    if (String(err.message || err).indexOf('DocumentApp') !== -1 || String(err.message || err).indexOf('auth/documents') !== -1) {
+      throw new Error(
+        'Hace falta autorizar el acceso a Documentos de Google para generar el PDF. ' +
+          'Ve al editor de Apps Script, elige la funcion "authorizePdfAccess" en el desplegable ' +
+          'de arriba, pulsa Ejecutar y acepta los permisos. Despues vuelve a intentar la descarga.'
+      );
+    }
+    throw err;
+  }
+}
+
+/**
+ * Crea y borra en el acto un documento de Google temporal. No la usa la app:
+ * es solo para ejecutarla UNA VEZ a mano desde el editor de Apps Script
+ * cuando se instala esta funcionalidad (o si "Descargar PDF" falla pidiendo
+ * autorizacion). Eso es lo unico que hace que Google detecte que el script
+ * necesita el permiso de Documentos/Drive y muestre la pantalla para
+ * concederlo; una vez aceptada, el propio despliegue web ya puede generar
+ * PDFs sin este paso.
+ */
+function authorizePdfAccess() {
+  var doc = DocumentApp.create('Rondas - autorizacion temporal');
+  DriveApp.getFileById(doc.getId()).setTrashed(true);
+  Logger.log('Permisos de Documentos/Drive concedidos correctamente.');
+}
+
+function buildRoundsPdf_(params) {
   var rows = filterRoundsHistory_(params).slice(0, 1000);
   var total = rows.length;
   var counts = { completa: 0, incompleta: 0, no_iniciada: 0, sin_configurar: 0 };

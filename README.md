@@ -1,4 +1,4 @@
-# Rondas
+# Controlpark · Rondas
 
 Aplicación web para verificar que el auxiliar de un puesto (garita + aparcamiento) realiza
 sus rondas periódicas y sigue activo, con alertas automáticas por email cuando algo falla.
@@ -21,9 +21,11 @@ ninguna cuenta nueva: solo tu Google, que ya tienes.
   aparcamiento y la garita. Cada uno genera un código QR único para imprimir y pegar en su sitio.
 - El auxiliar **inicia turno** desde su móvil al llegar y lo **termina** al acabar.
 - Con el turno abierto, cada vez que pasa por un punto pulsa **"📷 Escanear punto"** dentro
-  de la propia app: se abre la cámara del móvil (pide permiso la primera vez) y en cuanto
-  reconoce el QR, registra el paso automáticamente. Todo ocurre dentro de la app, sin
-  depender de la cámara nativa del sistema ni de abrir ningún enlace.
+  de la propia app: se abre la cámara nativa del móvil para hacer una foto del QR (no un
+  vídeo en directo — los Web Apps de Apps Script se sirven dentro de un iframe de Google
+  que no permite acceso a la cámara en directo, así que se usa una foto, que la app
+  decodifica al instante) y en cuanto la reconoce, registra el paso automáticamente. Sigue
+  siendo "escanear desde dentro de la app": la foto se toma y se procesa sin salir de ella.
 - El supervisor tiene un botón parecido, **"📷 Verificar QR"**, junto a "Puntos de control":
   sirve para comprobar a qué punto corresponde un código ya impreso, sin que cuente como
   ronda realizada (útil al colocar o revisar los QR físicos).
@@ -84,7 +86,8 @@ de escritorio"** para tener la barra de herramientas completa.
      ábrela y ya está, no hay ningún otro sitio que configurar.
 9. Entra con `supervisor` / `cambia-esta-clave` (o las credenciales que hayas creado). En
    el iPad, desde Safari puedes usar "Compartir → Añadir a pantalla de inicio" para que se
-   abra como una app aparte, sin barra de navegador.
+   abra como una app aparte, sin barra de navegador — el icono que se cree ya es el logo de
+   Controlpark, no el genérico de Apps Script.
 
 **Importante para el futuro:** si algún día cambias el código y quieres volver a
 desplegarlo, usa **Implementar → Gestionar implementaciones → editar (icono de lápiz) →
@@ -107,14 +110,18 @@ ejemplo, el escáner de cámara o el historial con filtros/PDF):
    más**. Es seguro repetirlo: no borra datos ni usuarios existentes, solo añade a la hoja
    `RoundsHistory` las columnas nuevas (`auxiliarId`, `auxiliarName`) que hacen falta para
    poder filtrar el historial por auxiliar/turno.
-3. Vuelve a desplegar: **Implementar → Gestionar implementaciones → editar (icono de
+3. En el mismo desplegable, elige **`authorizePdfAccess`** y pulsa ▶ Ejecutar **una vez**.
+   Te va a pedir autorizar permisos nuevos (Documentos/Drive, con el mismo aviso de
+   "Avanzado → Ir a... (no seguro)" de siempre) — es necesario para que **"Descargar PDF"**
+   funcione, porque genera el PDF creando un documento de Google temporal. Si no haces este
+   paso, al descargar el PDF verás un error pidiéndote exactamente esto mismo.
+4. Vuelve a desplegar: **Implementar → Gestionar implementaciones → editar (icono de
    lápiz) → Nueva versión** (no "Nueva implementación", para no cambiar la URL).
-4. La primera vez que uses **"Descargar PDF"** (o la primera vez que ejecutes algo tras
-   este cambio), Google puede pedirte autorizar permisos nuevos, porque el PDF se genera
-   creando un documento de Google temporal — acepta el aviso igual que la primera vez.
-5. El escaneo por cámara pedirá permiso de cámara al móvil la primera vez que se use. Si el
-   navegador lo bloquea, la app lo indica con un mensaje claro dentro del propio escáner:
-   revisa que esta página tenga permiso de cámara en los ajustes del navegador.
+5. El escaneo por QR ahora usa una **foto** en vez de vídeo en directo (ver "Cómo
+   funciona" más arriba): al pulsar "Escanear punto" o "Verificar QR" se abre directamente
+   la cámara nativa del móvil para hacer la foto, sin pedir ningún permiso especial de
+   cámara para la página — si el sistema operativo bloquea el acceso a la cámara en sí
+   (poco habitual), lo pedirá con su propio diálogo nativo.
 
 ## Primeros pasos ya dentro de la app
 
