@@ -340,6 +340,21 @@
     </div>
   </div>
 
+  <!-- Vista previa de un QR de punto de control (se genera en el navegador, -->
+  <!-- ver qrImageUrl mas abajo). Se muestra aqui dentro en vez de intentar -->
+  <!-- abrirlo en una pestana nueva, porque los navegadores bloquean navegar -->
+  <!-- a una URL "data:" desde target="_blank" (se queda en about:blank). -->
+  <div id="qrPreviewModal" class="hidden" style="position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:9998; display:flex; align-items:center; justify-content:center; flex-direction:column; padding:16px;">
+    <div style="width:100%; max-width:360px; text-align:center;">
+      <h3 id="qrPreviewName" style="color:#fff; margin-bottom:12px;"></h3>
+      <div style="background:#fff; border-radius:12px; padding:16px; display:inline-block;">
+        <img id="qrPreviewImg" style="width:260px; height:260px; display:block;" alt="QR" />
+      </div>
+      <p class="muted" style="margin-top:10px;">Mantén pulsada la imagen para guardarla o imprimirla.</p>
+      <button type="button" class="secondary big" style="margin-top:10px;" onclick="closeQrModal()">Cerrar</button>
+    </div>
+  </div>
+
   <!-- qrcode-generator (https://github.com/kazuhikoarase/qrcode-generator), MIT, -->
   <!-- minificado y vendorizado: genera los QR de los puntos de control en el propio -->
   <!-- navegador (data: URI), sin depender de ningun servicio externo de imagenes. -->
@@ -910,21 +925,32 @@
     // esta bloqueado o inaccesible desde la red/dispositivo del usuario, el
     // "Ver QR" mostraba siempre la misma imagen de "no se pudo cargar" para
     // todos los puntos (y por eso nunca habia un QR real que escanear).
-    function qrImageUrl(code) {
+    // cellSize configurable: pequeno para la miniatura de la tabla, grande
+    // para la vista previa del modal.
+    function qrImageUrl(code, cellSize) {
       var qr = qrcode(0, 'M');
       qr.addData(code);
       qr.make();
-      return qr.createDataURL(10);
+      return qr.createDataURL(cellSize || 10);
     }
+
+    // Los navegadores bloquean por seguridad navegar una pestana nueva
+    // (target="_blank"/window.open) a una URL "data:" (se queda en
+    // about:blank) - por eso el QR se muestra dentro de la propia pagina en
+    // vez de intentar "abrirlo" en una pestana aparte.
+    var checkpointsCache = [];
 
     async function refreshCheckpoints() {
       var cps = await apiCall('checkpoints.list');
+      checkpointsCache = cps;
       document.getElementById('checkpointsBody').innerHTML = cps
         .map((c) => {
           return '<tr>' +
             '<td>' + c.name + '</td>' +
             '<td>' + (c.active ? '✔️' : '❌') + '</td>' +
-            '<td><a href="' + qrImageUrl(c.code) + '" target="_blank" rel="noopener">Ver QR</a></td>' +
+            '<td><img src="' + qrImageUrl(c.code, 3) + '" alt="QR" width="44" height="44" ' +
+              'style="cursor:pointer; border-radius:6px; background:#fff; padding:2px; display:block;" ' +
+              'onclick="showQrModal(\'' + c.id + '\')" /></td>' +
             '<td class="row">' +
               '<button class="secondary" onclick="toggleCheckpoint(\'' + c.id + '\', ' + (!c.active) + ')">' + (c.active ? 'Desactivar' : 'Activar') + '</button>' +
               '<button class="danger" onclick="deleteCheckpoint(\'' + c.id + '\')">Eliminar</button>' +
@@ -932,6 +958,18 @@
             '</tr>';
         })
         .join('');
+    }
+
+    function showQrModal(id) {
+      var cp = checkpointsCache.filter((c) => c.id === id)[0];
+      if (!cp) return;
+      document.getElementById('qrPreviewName').textContent = cp.name;
+      document.getElementById('qrPreviewImg').src = qrImageUrl(cp.code, 12);
+      document.getElementById('qrPreviewModal').classList.remove('hidden');
+    }
+
+    function closeQrModal() {
+      document.getElementById('qrPreviewModal').classList.add('hidden');
     }
 
     async function toggleCheckpoint(id, active) {
