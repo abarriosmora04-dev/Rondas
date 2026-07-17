@@ -526,6 +526,26 @@
       statusEl.textContent = 'Analizando foto...';
       modal.classList.remove('hidden');
 
+      loadPhotoForQr(file);
+    });
+
+    // Las fotos del movil llevan la orientacion real en metadatos EXIF (no
+    // rotan los pixeles). createImageBitmap con imageOrientation:'from-image'
+    // decodifica ya respetando esa orientacion; sin esto, algunos navegadores
+    // dibujan la foto deformada/rotada en el canvas y jsQR no reconoce el
+    // codigo aunque la foto se vea perfecta a simple vista. Si el navegador
+    // no soporta esa opcion, se recurre al metodo anterior (Image + blob url).
+    function loadPhotoForQr(file) {
+      if (window.createImageBitmap) {
+        createImageBitmap(file, { imageOrientation: 'from-image' })
+          .then(function (bitmap) { decodeImageForQr(bitmap); })
+          .catch(function () { loadPhotoWithImageElement(file); });
+      } else {
+        loadPhotoWithImageElement(file);
+      }
+    }
+
+    function loadPhotoWithImageElement(file) {
       var url = URL.createObjectURL(file);
       var img = new Image();
       img.onload = function () {
@@ -537,18 +557,21 @@
         showScannerError('No se pudo leer la foto. Vuelve a intentarlo.');
       };
       img.src = url;
-    });
+    }
 
-    function decodeImageForQr(img) {
+    function decodeImageForQr(source) {
       var canvas = document.getElementById('scannerCanvas');
-      var maxDim = 1600;
-      var scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
-      canvas.width = Math.round(img.naturalWidth * scale);
-      canvas.height = Math.round(img.naturalHeight * scale);
+      var srcW = source.width || source.naturalWidth;
+      var srcH = source.height || source.naturalHeight;
+      var maxDim = 2200;
+      var scale = Math.min(1, maxDim / Math.max(srcW, srcH));
+      canvas.width = Math.round(srcW * scale);
+      canvas.height = Math.round(srcH * scale);
       var ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
       var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       var result = (typeof jsQR === 'function') ? jsQR(imageData.data, imageData.width, imageData.height) : null;
+      if (source.close) source.close();
       if (result && result.data) {
         var mode = scannerMode;
         var code = result.data;
