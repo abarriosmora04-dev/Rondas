@@ -286,6 +286,23 @@ function getCurrentShift_() {
   return null;
 }
 
+/**
+ * Turno que estuvo abierto en algun momento dentro de la ventana de un
+ * bloque de ronda ya pasado (no necesariamente el turno abierto ahora
+ * mismo). Se usa al cerrar cada bloque para saber a quien atribuirlo aunque
+ * el auxiliar ya haya terminado turno antes de que el disparador de "cada 1
+ * minuto" llegue a procesar ese bloque.
+ */
+function findShiftForSlot_(slotStart, slotEnd) {
+  var shifts = readAll_('Shifts');
+  for (var i = 0; i < shifts.length; i++) {
+    var started = Number(shifts[i].startedAt);
+    var ended = shifts[i].endedAt ? Number(shifts[i].endedAt) : Infinity;
+    if (started < slotEnd && ended > slotStart) return shifts[i];
+  }
+  return null;
+}
+
 function addAlert_(type, message, meta) {
   appendRow_('Alerts', {
     id: Utilities.getUuid(),
@@ -429,20 +446,27 @@ function checkRoundsAndHeartbeat() {
     var interval = getIntervalMinutes_();
     var slot = getSlot_(now, interval);
 
-    if (shift) {
-      var lastChecked = getSetting_('lastCheckedSlotStart', '');
-      if (lastChecked === '' || lastChecked === null) {
-        setSetting_('lastCheckedSlotStart', slot.slotStart);
-      } else if (Number(lastChecked) !== slot.slotStart) {
-        var prevSlotStart = Number(lastChecked);
-        var prevSlotEnd = prevSlotStart + interval * 60000;
-        processMissedSlot_(prevSlotStart, prevSlotEnd, shift);
-        setSetting_('lastCheckedSlotStart', slot.slotStart);
+    // El cierre de cada bloque se procesa en cuanto cambia el "slot" actual,
+    // independientemente de si hay un turno abierto AHORA MISMO: si solo se
+    // mirara "hay turno abierto" en este preciso instante, un auxiliar que
+    // termina turno justo despues de completar la ronda (antes de que este
+    // disparador vuelva a pasar) hacia que ese bloque nunca se guardara en
+    // el historial. En vez de eso, se busca que turno estuvo abierto durante
+    // la ventana del bloque que acaba de cerrarse (findShiftForSlot_).
+    var lastChecked = getSetting_('lastCheckedSlotStart', '');
+    if (lastChecked === '' || lastChecked === null) {
+      setSetting_('lastCheckedSlotStart', slot.slotStart);
+    } else if (Number(lastChecked) !== slot.slotStart) {
+      var prevSlotStart = Number(lastChecked);
+      var prevSlotEnd = prevSlotStart + interval * 60000;
+      var prevShift = findShiftForSlot_(prevSlotStart, prevSlotEnd);
+      if (prevShift) {
+        processMissedSlot_(prevSlotStart, prevSlotEnd, prevShift);
       }
-      checkHeartbeat_(now);
-    } else {
       setSetting_('lastCheckedSlotStart', slot.slotStart);
     }
+
+    if (shift) checkHeartbeat_(now);
 
     pruneOldData_();
   } finally {
