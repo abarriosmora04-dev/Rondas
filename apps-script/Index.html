@@ -335,6 +335,7 @@
     <div style="width:100%; max-width:420px;">
       <p class="muted" id="scannerStatus" style="text-align:center;">Analizando foto...</p>
       <p class="error hidden" id="scannerError" style="text-align:center;"></p>
+      <img id="scannerDebugPreview" class="hidden" style="width:100%; border-radius:8px; margin-top:6px;" alt="Foto analizada" />
       <button type="button" class="ok big hidden" id="scannerRetryBtn" style="margin-top:10px;" onclick="retryScan()">Reintentar</button>
       <button type="button" class="secondary big" style="margin-top:10px;" onclick="closeScanner()">Cancelar</button>
     </div>
@@ -542,6 +543,7 @@
       var retryBtn = document.getElementById('scannerRetryBtn');
       errEl.classList.add('hidden');
       retryBtn.classList.add('hidden');
+      document.getElementById('scannerDebugPreview').classList.add('hidden');
       statusEl.classList.remove('hidden');
       statusEl.textContent = 'Analizando foto...';
       modal.classList.remove('hidden');
@@ -579,18 +581,30 @@
       img.src = url;
     }
 
+    // Se intenta decodificar a varios tamanos: el patron del QR a veces se
+    // reconoce a una resolucion y no a otra (demasiado detalle/ruido a
+    // tamano original, demasiado borroso si se reduce de mas), asi que
+    // probar varias es mucho mas fiable que fijar un unico tamano.
+    var SCAN_SCALE_ATTEMPTS = [2200, 3200, 1100];
+
     function decodeImageForQr(source) {
       var canvas = document.getElementById('scannerCanvas');
       var srcW = source.width || source.naturalWidth;
       var srcH = source.height || source.naturalHeight;
-      var maxDim = 2200;
-      var scale = Math.min(1, maxDim / Math.max(srcW, srcH));
-      canvas.width = Math.round(srcW * scale);
-      canvas.height = Math.round(srcH * scale);
       var ctx = canvas.getContext('2d');
-      ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
-      var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      var result = (typeof jsQR === 'function') ? jsQR(imageData.data, imageData.width, imageData.height) : null;
+      var result = null;
+
+      for (var i = 0; i < SCAN_SCALE_ATTEMPTS.length; i++) {
+        var maxDim = SCAN_SCALE_ATTEMPTS[i];
+        var scale = Math.min(1, maxDim / Math.max(srcW, srcH));
+        canvas.width = Math.round(srcW * scale);
+        canvas.height = Math.round(srcH * scale);
+        ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+        var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        result = (typeof jsQR === 'function') ? jsQR(imageData.data, imageData.width, imageData.height) : null;
+        if (result && result.data) break;
+      }
+
       if (source.close) source.close();
       if (result && result.data) {
         var mode = scannerMode;
@@ -598,16 +612,28 @@
         closeScanner();
         handleScanResult(mode, code);
       } else {
-        showScannerError('No se ha detectado ningún código QR en la foto. Acércate más y asegúrate de que haya buena luz.');
+        // Se deja visible exactamente la imagen que se analizo (a la ultima
+        // resolucion probada): si vuelve a fallar, una captura de pantalla de
+        // este mensaje permite ver de verdad que fotograma se le paso a
+        // jsQR, en vez de adivinar a ciegas.
+        var debugPreview = canvas.toDataURL('image/jpeg', 0.7);
+        showScannerError('No se ha detectado ningún código QR en la foto. Acércate más y asegúrate de que haya buena luz.', debugPreview);
       }
     }
 
-    function showScannerError(msg) {
+    function showScannerError(msg, debugPreviewDataUrl) {
       document.getElementById('scannerStatus').classList.add('hidden');
       var errEl = document.getElementById('scannerError');
       errEl.textContent = '⚠️ ' + msg;
       errEl.classList.remove('hidden');
       document.getElementById('scannerRetryBtn').classList.remove('hidden');
+      var previewImg = document.getElementById('scannerDebugPreview');
+      if (debugPreviewDataUrl) {
+        previewImg.src = debugPreviewDataUrl;
+        previewImg.classList.remove('hidden');
+      } else {
+        previewImg.classList.add('hidden');
+      }
     }
 
     function retryScan() {
