@@ -84,15 +84,35 @@ de escritorio"** para tener la barra de herramientas completa.
    - Copia la **URL de la aplicación web** que te da (algo como
      `https://script.google.com/macros/s/XXXXXXXX/exec`). **Esa URL es toda la app** —
      ábrela y ya está, no hay ningún otro sitio que configurar.
-9. Entra con `supervisor` / `cambia-esta-clave` (o las credenciales que hayas creado). En
-   el iPad, desde Safari puedes usar "Compartir → Añadir a pantalla de inicio" para que se
-   abra como una app aparte, sin barra de navegador — el icono que se cree ya es el logo de
-   Controlpark, no el genérico de Apps Script.
+9. Entra con `supervisor` / `cambia-esta-clave` (o las credenciales que hayas creado).
 
 **Importante para el futuro:** si algún día cambias el código y quieres volver a
 desplegarlo, usa **Implementar → Gestionar implementaciones → editar (icono de lápiz) →
 Nueva versión**, NO crees una implementación completamente nueva — si lo haces, la URL
 cambia y tendrías que avisar a todo el mundo de la URL nueva.
+
+## Icono real y pantalla completa en el iPad ("Añadir a pantalla de inicio")
+
+Si añades directamente la URL de `script.google.com` a la pantalla de inicio, Safari
+genera un icono genérico (una letra sobre fondo oscuro) y no un icono real, porque los Web
+Apps de Apps Script se sirven dentro de una página que controla Google, y Safari lee el
+icono de esa página, no del nuestro. Para tener el icono de Controlpark de verdad y que se
+abra a pantalla completa (sin barra de Safari), hace falta una página propia mínima que
+solo redirige a la app — ya está creada en este repositorio (`docs/index.html`), solo hay
+que activarla **una vez**:
+
+1. En GitHub, entra en este repositorio → **Settings → Pages**.
+2. En **Source**, elige **Deploy from a branch**.
+3. En **Branch**, elige la rama con la que estás trabajando y la carpeta **`/docs`** → **Save**.
+4. Espera uno o dos minutos y recarga la página de Settings → Pages: arriba te dará la URL
+   pública (algo como `https://tu-usuario.github.io/Rondas/`).
+5. En el iPad, abre **esa** URL (la de GitHub Pages, no la de `script.google.com`) en
+   Safari, y usa "Compartir → Añadir a pantalla de inicio". El icono que se cree ahora sí es
+   el de Controlpark, y al abrirlo se ve a pantalla completa, sin barra de navegador.
+
+Si algún día cambias la URL del despliegue de Apps Script (solo pasa si usas "Nueva
+implementación" en vez de "Nueva versión", ver aviso más arriba), actualiza la constante
+`APP_URL` dentro de `docs/index.html` con la URL nueva.
 
 Las alertas por email llegan, por defecto, a la cuenta de Google dueña del script. Si
 quieres cambiar el destinatario, abre la pestaña **Settings** de la Google Sheet y edita a
